@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mostyn Rota Maker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='7' cy='16' r='5' fill='%23f2d48f'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23f0a075'/%3E%3Ccircle cx='25' cy='16' r='5' fill='%232b3a67'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --ink:#262b36; --muted:#6d7280; --paper:#f6f5f1; --card:#ffffff;
+    --line:#e4e1d8; --line-strong:#c9c5b8;
+    --brand:#b02a24; --brand-dark:#8e1f1a;
+    --night:#2b3a67; --night-deep:#222b4d;
+    --morning:#f2d48f; --afternoon:#f0a075;
+    --ok:#2e7d32; --okbg:#e8f3e9; --bad:#b3261e; --badbg:#fbeceb;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{font-size:16px;}
+  body{
+    font-family:"Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    background:var(--paper); color:var(--ink); line-height:1.45;
+  }
+  button{font:inherit;}
+
+  /* ============ header ============ */
+  .hero{
+    background:linear-gradient(120deg, var(--night-deep) 0%, var(--night) 62%, #40356b 100%);
+    color:#fff; padding:26px 28px;
+  }
+  .hero .inner{max-width:1180px; margin:0 auto; display:flex; align-items:center; gap:18px;}
+  .shiftdots{display:flex; gap:5px; flex:none;}
+  .shiftdots i{width:16px; height:16px; border-radius:50%; display:block;}
+  .shiftdots .m{background:var(--morning);}
+  .shiftdots .a{background:var(--afternoon);}
+  .shiftdots .n{background:#8fa3e0; box-shadow:inset -4px -3px 0 var(--night);}
+  .hero h1{font-size:1.45rem; font-weight:750; letter-spacing:.2px; text-wrap:balance;}
+  .hero p{font-size:.85rem; color:#c6cbe2; margin-top:2px;}
+
+  main{max-width:1180px; margin:0 auto; padding:26px 28px 60px;}
+
+  /* ============ cards & steps ============ */
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:22px 24px; margin-bottom:18px;
+    box-shadow:0 1px 2px rgba(38,43,54,.05), 0 8px 24px -18px rgba(38,43,54,.25);
+  }
+  .step-tag{
+    font-size:.68rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--brand); margin-bottom:2px;
+  }
+  .card h2{font-size:1.05rem; font-weight:700; margin-bottom:14px;}
+  .card h2 small{font-weight:400; color:var(--muted); font-size:.8rem; margin-left:8px;}
+
+  .row{display:flex; gap:22px; flex-wrap:wrap;}
+  label{display:block; font-size:.75rem; font-weight:600; color:var(--muted); margin-bottom:5px;}
+  input[type=date], input[type=number]{
+    padding:9px 12px; border:1px solid var(--line-strong); border-radius:9px;
+    font:inherit; font-variant-numeric:tabular-nums; background:#fff; color:var(--ink);
+  }
+  input:focus-visible, button:focus-visible, .seg:focus-visible{
+    outline:2px solid var(--night); outline-offset:2px;
+  }
+  input[type=number]{width:74px; text-align:center;}
+
+  /* employee steppers */
+  .emps{display:grid; grid-template-columns:repeat(auto-fill,minmax(255px,1fr)); gap:12px;}
+  .emp{
+    display:flex; align-items:center; gap:12px;
+    border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fdfdfb;
+  }
+  .avatar{
+    width:38px; height:38px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:.95rem; color:rgba(38,43,54,.75);
+    border:1px solid rgba(38,43,54,.12);
+  }
+  .emp .info{flex:1; min-width:0;}
+  .emp .name{font-weight:700; font-size:.88rem;}
+  .emp .note{font-size:.72rem; color:var(--muted);}
+  .stepper{display:flex; align-items:center; gap:6px;}
+  .stepper input{width:46px; padding:6px 4px; font-weight:700;}
+  .bump{
+    width:30px; height:30px; border-radius:50%; border:1px solid var(--line-strong);
+    background:#fff; color:var(--ink); font-size:1.05rem; font-weight:700; line-height:1;
+    cursor:pointer; transition:background .12s, transform .12s;
+  }
+  .bump:hover{background:var(--paper); transform:scale(1.06);}
+
+  /* unavailability grid */
+  .offwrap{overflow-x:auto; padding-bottom:4px;}
+  table.offgrid{border-collapse:separate; border-spacing:0; font-size:.7rem;}
+  table.offgrid th, table.offgrid td{border-bottom:1px solid var(--line); padding:4px 5px; text-align:center;}
+  table.offgrid thead th{font-weight:600; color:var(--muted); white-space:nowrap; padding-bottom:6px;}
+  table.offgrid thead th.wk{color:var(--brand);}
+  table.offgrid td.nm{
+    font-weight:700; text-align:left; white-space:nowrap; padding-right:14px; font-size:.78rem;
+    position:sticky; left:0; background:var(--card); z-index:1;
+  }
+  table.offgrid td.cell{white-space:nowrap; padding:4px 3px;}
+  .seg{
+    display:inline-block; width:19px; padding:3px 0; margin:0 1px; text-align:center;
+    font-size:.62rem; font-weight:700; border-radius:5px;
+    background:#efede6; color:#7a7668; cursor:pointer; user-select:none;
+    transition:background .12s, color .12s;
+  }
+  .seg:hover{background:#ddd9cc;}
+  .seg.blk{background:var(--brand); color:#fff;}
+  .seg.na{opacity:.2; cursor:default; pointer-events:none;}
+  .seg.all{background:#e3e1d6;}
+  .seg.all:hover{background:#d0cdbf;}
+  .seg.all.blk{background:var(--night); color:#fff;}
+  .hint{font-size:.74rem; color:var(--muted); margin-top:10px;}
+  .hint b{color:var(--ink);}
+
+  /* total + generate */
+  .totalbar{display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
+  .total{
+    font-size:.88rem; font-weight:700; padding:10px 16px; border-radius:10px;
+    background:#f0efe9; border:1px solid var(--line); font-variant-numeric:tabular-nums;
+  }
+  .total.ok{background:var(--okbg); border-color:#bcd9bf; color:var(--ok);}
+  .total.bad{background:var(--badbg); border-color:#eec3c0; color:var(--bad);}
+
+  .btn{
+    padding:12px 26px; font-size:.92rem; font-weight:700; border:none; border-radius:10px;
+    cursor:pointer; transition:background .12s, transform .12s, box-shadow .12s;
+  }
+  .btn-primary{
+    background:var(--brand); color:#fff;
+    box-shadow:0 6px 16px -8px rgba(176,42,36,.6);
+  }
+  .btn-primary:hover{background:var(--brand-dark); transform:translateY(-1px);}
+  .btn-secondary{background:#fff; color:var(--ink); border:1px solid var(--line-strong);}
+  .btn-secondary:hover{background:var(--paper);}
+  .error{color:var(--bad); font-size:.82rem; font-weight:600; margin-top:12px; white-space:pre-line;}
+
+  .toolbar{margin:2px 0 16px; display:none; gap:10px;}
+
+  /* ============ rota table ============ */
+  #output{margin-top:6px;}
+  .rota-title{
+    background:var(--brand); color:#fff; text-align:center; font-weight:800;
+    font-size:.95rem; letter-spacing:.06em; padding:9px 8px;
+    border-radius:10px 10px 0 0;
+  }
+  .rotawrap{overflow-x:auto; border:1px solid var(--line-strong); border-top:none; border-radius:0 0 10px 10px; background:#fff;}
+  table.rota{border-collapse:collapse; width:100%; font-size:.78rem; font-variant-numeric:tabular-nums;}
+  table.rota th, table.rota td{border:1px solid #d8d5cc; padding:6px 7px; text-align:center;}
+  table.rota th{font-size:.7rem; letter-spacing:.04em;}
+  th.h-date{background:var(--brand); color:#fff;}
+  th.h-station{background:var(--ink); color:#fff;}
+  th.h-name{background:#efede6; color:var(--ink);}
+  th.h-morning{background:var(--morning);}
+  th.h-afternoon{background:var(--afternoon);}
+  th.h-night{background:var(--night); color:#fff;}
+  td.date, td.day{font-weight:700;}
+  td.station{color:var(--muted);}
+  td.name{font-weight:800;}
+  td.hrs{color:var(--brand); font-weight:700;}
+  tr.weekend td.date, tr.weekend td.day{background:#f6f2e6;}
+
+  /* summary tiles */
+  .tiles{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; margin-top:18px;}
+  .tile{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; display:flex; align-items:center; gap:11px;
+  }
+  .tile .tname{font-weight:700; font-size:.85rem;}
+  .tile .tstat{font-size:.75rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+
+  footer{max-width:1180px; margin:0 auto; padding:0 28px 40px; font-size:.72rem; color:var(--muted);}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+
+  /* ============ print ============ */
+  @media print{
+    body{background:#fff;}
+    .hero, .card, .toolbar, footer{display:none !important;}
+    main{padding:0; max-width:none;}
+    .rotawrap{overflow:visible; border:none; border-radius:0;}
+    .rota-title{border-radius:0; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    table.rota th, table.rota td{border:1px solid #000;}
+    table.rota{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    .tiles{display:none;}
+    @page{size:A4 landscape; margin:8mm;}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="inner">
+    <span class="shiftdots" aria-hidden="true"><i class="m"></i><i class="a"></i><i class="n"></i></span>
+    <div>
+      <h1>Mostyn Rota Maker</h1>
+      <p>Mostyn Broadway &middot; build the fortnight's rota in three steps, then print it</p>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section class="card">
+  <div class="step-tag">Step 1</div>
+  <h2>Choose the dates</h2>
+  <div class="row">
+    <div>
+      <label for="startDate">First day of the rota</label>
+      <input type="date" id="startDate">
+    </div>
+    <div>
+      <label for="numDays">How many days</label>
+      <input type="number" id="numDays" min="7" max="28" value="14">
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="step-tag">Step 2</div>
+  <h2>Shifts for each person <small>use + and &minus;, or type a number</small></h2>
+  <div class="emps" id="empInputs"></div>
+</section>
+
+<section class="card">
+  <div class="step-tag">Step 3</div>
+  <h2>Time off <small>optional &mdash; skip if everyone is available</small></h2>
+  <div class="offwrap" id="offGridWrap"></div>
+  <div class="hint">Click <b>M</b> (morning), <b>A</b> (afternoon) or <b>N</b> (night) to block that shift for that person on that day &mdash; red means blocked.
+    Click <b>&times;</b> to give the whole day off. Faded letters are shifts that person never works anyway.</div>
+</section>
+
+<section class="card">
+  <div class="totalbar">
+    <div class="total" id="totalBox">0 of 42 shifts</div>
+    <button class="btn btn-primary" id="btnGen">Generate rota</button>
+  </div>
+  <div class="error" id="errBox"></div>
+</section>
+
+<div class="toolbar" id="toolbar">
+  <button class="btn btn-secondary" onclick="window.print()">&#128424; Print / save as PDF</button>
+  <button class="btn btn-secondary" id="btnShuffle">&#8635; Generate again (different mix)</button>
+</div>
+
+<div id="output"></div>
+
+</main>
+
+<footer>
+  Rules applied automatically: one shift per person per day &middot; Arooj afternoons only (finishing 21:30) &middot;
+  Elaine &amp; Rida mornings only &middot; nobody moves to an earlier shift than the day before.
+</footer>
+
+<script>
+"use strict";
+/* ================= configuration ================= */
+const M=0, A=1, N=2;
+const EMPLOYEES = [
+  {name:"HASSAN", allowed:[M,A,N], color:"#cfd8dc", note:"any shift",             def:5},
+  {name:"ELAINE", allowed:[M],     color:"#e6b8e6", note:"mornings only",         def:8},
+  {name:"AROOJ",  allowed:[A],     color:"#f4b6c2", note:"2pm–9:30pm only",  def:6},
+  {name:"RIDA",   allowed:[M],     color:"#b6e2b6", note:"mornings only",         def:5},
+  {name:"USAMA",  allowed:[M,A,N], color:"#ffe066", note:"any shift",             def:6},
+  {name:"SHAH",   allowed:[M,A,N], color:"#bcd0f0", note:"any shift",             def:8},
+  {name:"WES",    allowed:[M,A,N], color:"#ffd9b3", note:"any shift",             def:4},
+];
+const AROOJ = 2, ELAINE = 1, RIDA = 3;
+
+/* ================= UI setup ================= */
+const $ = id => document.getElementById(id);
+
+// blocked[p] = Map: day index -> Set of shifts (M/A/N) the person cannot work that day
+const blocked = EMPLOYEES.map(()=>new Map());
+
+const isBlocked = (p,d,s) => { const set = blocked[p].get(d); return set ? set.has(s) : false; };
+const setBlocked = (p,d,s,on) => {
+  let set = blocked[p].get(d);
+  if (on){ if(!set){ set = new Set(); blocked[p].set(d,set); } set.add(s); }
+  else if (set){ set.delete(s); if(!set.size) blocked[p].delete(d); }
+};
+// whole day unavailable = every shift this person is allowed to work is blocked
+const fullyOff = (p,d) => EMPLOYEES[p].allowed.every(s => isBlocked(p,d,s));
+
+function initUI(){
+  const t = new Date();
+  $("startDate").value = t.toISOString().slice(0,10);
+
+  const box = $("empInputs");
+  EMPLOYEES.forEach((e,i)=>{
+    const div = document.createElement("div");
+    div.className = "emp";
+    div.innerHTML =
+      `<span class="avatar" style="background:${e.color}">${e.name[0]}</span>` +
+      `<span class="info"><span class="name">${e.name}</span><br><span class="note">${e.note}</span></span>` +
+      `<span class="stepper">` +
+        `<button class="bump" data-i="${i}" data-d="-1" aria-label="fewer shifts for ${e.name}">&minus;</button>` +
+        `<input type="number" min="0" id="cnt${i}" value="${e.def}">` +
+        `<button class="bump" data-i="${i}" data-d="1" aria-label="more shifts for ${e.name}">+</button>` +
+      `</span>`;
+    box.appendChild(div);
+    div.querySelector("input").addEventListener("input", updateTotal);
+  });
+  box.querySelectorAll(".bump").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const inp = $("cnt"+b.dataset.i);
+      inp.value = Math.max(0, (parseInt(inp.value||"0",10)) + (+b.dataset.d));
+      updateTotal();
+    });
+  });
+  $("numDays").addEventListener("input", ()=>{ updateTotal(); buildOffGrid(); });
+  $("startDate").addEventListener("input", buildOffGrid);
+  $("btnGen").addEventListener("click", run);
+  $("btnShuffle").addEventListener("click", run);
+  updateTotal();
+  buildOffGrid();
+}
+
+function buildOffGrid(){
+  const days = parseInt($("numDays").value||"0",10);
+  const startVal = $("startDate").value;
+  if (!days || days<1 || !startVal){ $("offGridWrap").innerHTML=""; return; }
+  const start = new Date(startVal + "T00:00:00");
+
+  // drop marks that fall outside the new range
+  blocked.forEach(map => { for (const d of [...map.keys()]) if (d >= days) map.delete(d); });
+
+  let h = `<table class="offgrid"><thead><tr><th></th>`;
+  for (let d=0; d<days; d++){
+    const dt = new Date(start); dt.setDate(dt.getDate()+d);
+    const wk = (dt.getDay()===0 || dt.getDay()===6) ? " class=\"wk\"" : "";
+    h += `<th${wk}>${DAYNAMES[dt.getDay()].slice(0,3)}<br>${pad(dt.getDate())}/${pad(dt.getMonth()+1)}</th>`;
+  }
+  h += `</tr></thead><tbody>`;
+  const SEGS = [["M",M],["A",A],["N",N]];
+  EMPLOYEES.forEach((e,p)=>{
+    h += `<tr><td class="nm"><span class="avatar" style="display:inline-flex;width:20px;height:20px;font-size:.6rem;vertical-align:-5px;background:${e.color}">${e.name[0]}</span> ${e.name}</td>`;
+    for (let d=0; d<days; d++){
+      h += `<td class="cell">`;
+      for (const [lbl,s] of SEGS){
+        const na = !e.allowed.includes(s);
+        const blk = !na && isBlocked(p,d,s);
+        h += `<span class="seg${na?" na":""}${blk?" blk":""}" tabindex="0" data-p="${p}" data-d="${d}" data-s="${s}">${lbl}</span>`;
+      }
+      h += `<span class="seg all${fullyOff(p,d)?" blk":""}" tabindex="0" data-p="${p}" data-d="${d}" data-s="all">&times;</span></td>`;
+    }
+    h += `</tr>`;
+  });
+  h += `</tbody></table>`;
+  $("offGridWrap").innerHTML = h;
+  $("offGridWrap").querySelectorAll(".seg:not(.na)").forEach(seg=>{
+    const toggle = ()=>{
+      const p = +seg.dataset.p, d = +seg.dataset.d;
+      if (seg.dataset.s === "all"){
+        const on = !fullyOff(p,d);                  // block whole day, or clear it
+        EMPLOYEES[p].allowed.forEach(s => setBlocked(p,d,s,on));
+        if (!on) blocked[p].delete(d);              // also clears blocks on never-worked shifts
+      } else {
+        const s = +seg.dataset.s;
+        setBlocked(p,d,s,!isBlocked(p,d,s));
+      }
+      buildOffGrid();                               // re-render to sync state
+    };
+    seg.addEventListener("click", toggle);
+    seg.addEventListener("keydown", ev=>{ if(ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); toggle(); } });
+  });
+}
+
+function getCounts(){ return EMPLOYEES.map((_,i)=> Math.max(0, parseInt($("cnt"+i).value||"0",10))); }
+
+function updateTotal(){
+  const days = parseInt($("numDays").value||"0",10);
+  const need = days*3;
+  const tot = getCounts().reduce((a,b)=>a+b,0);
+  const box = $("totalBox");
+  if (tot === need) box.textContent = `${tot} of ${need} shifts — ready ✓`;
+  else if (tot < need) box.textContent = `${tot} of ${need} shifts — ${need-tot} more to add`;
+  else box.textContent = `${tot} of ${need} shifts — ${tot-need} too many`;
+  box.className = "total " + (tot===need ? "ok" : "bad");
+}
+
+/* ================= validation ================= */
+function validate(days, counts){
+  const errs = [];
+  const need = days*3;
+  const tot = counts.reduce((a,b)=>a+b,0);
+  if (!days || days < 1) errs.push("Number of days must be at least 1.");
+  if (tot !== need) errs.push(`Total shifts must be exactly ${need} (3 per day × ${days} days). Currently ${tot}.`);
+  counts.forEach((c,i)=>{
+    let offDays = 0;
+    for (let d=0; d<days; d++) if (fullyOff(i,d)) offDays++;
+    const avail = days - offDays;
+    if (c > days) errs.push(`${EMPLOYEES[i].name} cannot work more than ${days} shifts (max 1 per day).`);
+    else if (c > avail) errs.push(`${EMPLOYEES[i].name} is fully unavailable on ${offDays} day(s), so can work at most ${avail} shifts.`);
+  });
+  if (counts[ELAINE] + counts[RIDA] > days)
+    errs.push(`Elaine + Rida together cannot exceed ${days} — they can only work the ${days} morning slots.`);
+  if (counts[AROOJ] > days)
+    errs.push(`Arooj cannot exceed ${days} — she can only work the ${days} afternoon slots.`);
+  return errs;
+}
+
+/* ================= solver =================
+   Slots are filled day by day (night first each day, as nights are the
+   most constrained), using randomised backtracking.
+   Rules enforced:
+   - one shift per person per day
+   - allowed shifts per person
+   - blocked shifts / days off are never scheduled
+   - next-day shift must be the same or later than the previous day's shift
+     (>= 2 shift-slots of rest)                                        */
+function solve(days, counts, blk, seed){
+  const blkHas = (p,d,s) => { const set = blk[p].get(d); return set ? set.has(s) : false; };
+  let rngState = seed >>> 0;
+  const rnd = () => {                       // xorshift32
+    rngState ^= rngState << 13; rngState ^= rngState >>> 17; rngState ^= rngState << 5;
+    return ((rngState >>> 0) % 100000) / 100000;
+  };
+
+  const nE = EMPLOYEES.length;
+  const rem = counts.slice();
+  // grid[d][s] = employee index or -1
+  const grid = Array.from({length:days}, ()=>[-1,-1,-1]);
+  const workedShift = Array.from({length:days}, ()=>new Array(nE).fill(-1)); // shift worked by p on day d
+  const fillOrder = [];                     // [d, shift] — nights first within each day
+  for (let d=0; d<days; d++) for (const s of [N, M, A]) fillOrder.push([d,s]);
+
+  let nodes = 0;
+  const MAX_NODES = 400000;
+
+  // slots of each shift type remaining strictly after position k in fillOrder
+  const slotsAfter = [];
+  {
+    const c=[0,0,0];
+    for (let k=fillOrder.length-1;k>=0;k--){ slotsAfter[k]=c.slice(); c[fillOrder[k][1]]++; }
+  }
+
+  // availFrom[p][d] = days from d to the end on which p can work at least one shift
+  const availFrom = EMPLOYEES.map((e,p)=>{
+    const a = new Array(days+1).fill(0);
+    for (let d=days-1; d>=0; d--){
+      const canWork = e.allowed.some(s => !blkHas(p,d,s));
+      a[d] = a[d+1] + (canWork ? 1 : 0);
+    }
+    return a;
+  });
+
+  function prune(k){
+    // restricted people must still fit in their only shift type
+    const after = slotsAfter[k];
+    if (rem[ELAINE]+rem[RIDA] > after[M]) return true;
+    if (rem[AROOJ] > after[A]) return true;
+    return false;
+  }
+
+  function candidates(d, s){
+    const list = [];
+    for (let p=0; p<nE; p++){
+      if (rem[p] === 0) continue;
+      if (blkHas(p,d,s)) continue;                                  // blocked shift / day off
+      if (!EMPLOYEES[p].allowed.includes(s)) continue;
+      if (workedShift[d][p] !== -1) continue;                       // already on today
+      if (d>0){ const prev = workedShift[d-1][p]; if (prev !== -1 && s < prev) continue; } // rest rule
+      list.push(p);
+    }
+    // order: urgent people first, then a scored shuffle
+    list.sort((p1,p2)=>{
+      const u1 = rem[p1] - availFrom[p1][d], u2 = rem[p2] - availFrom[p2][d];
+      if (u1 !== u2) return u2 - u1;                                 // most urgent first
+      const c1 = (d>0 && workedShift[d-1][p1]===s) ? 0.6 : 0;        // continuity bonus
+      const c2 = (d>0 && workedShift[d-1][p2]===s) ? 0.6 : 0;
+      return (rem[p2]+c2+rnd()) - (rem[p1]+c1+rnd());
+    });
+    return list;
+  }
+
+  function bt(k){
+    if (k === fillOrder.length) return true;
+    if (++nodes > MAX_NODES) return false;
+    const [d,s] = fillOrder[k];
+    for (const p of candidates(d,s)){
+      grid[d][s]=p; workedShift[d][p]=s; rem[p]--;
+      let bad = prune(k);
+      if (!bad){
+        for (let q=0; q<nE && !bad; q++){
+          // days q can still work: rest of range, plus today if free & available
+          const usable = (workedShift[d][q]===-1) ? availFrom[q][d] : availFrom[q][d+1];
+          if (rem[q] > usable) bad = true;
+        }
+      }
+      if (!bad && bt(k+1)) return true;
+      grid[d][s]=-1; workedShift[d][p]=-1; rem[p]++;
+    }
+    return false;
+  }
+
+  return bt(0) ? grid : null;
+}
+
+function generate(days, counts, blk){
+  // several randomised restarts — different seeds give different valid rotas
+  for (let attempt=0; attempt<12; attempt++){
+    const seed = (Date.now() + attempt*7919 + Math.floor(Math.random()*1e6)) | 1;
+    const g = solve(days, counts, blk, seed);
+    if (g) return g;
+  }
+  return null;
+}
+
+/* ================= rendering ================= */
+const DAYNAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const pad = n => String(n).padStart(2,"0");
+const fmtDate = dt => `${pad(dt.getDate())}/${pad(dt.getMonth()+1)}/${dt.getFullYear()}`;
+
+function shiftTimes(grid, d){
+  const aroojDay = grid[d][A] === AROOJ;
+  return {
+    morning:   {from:"06:00", to:"14:00", hrs:8.0},
+    afternoon: aroojDay ? {from:"14:00", to:"21:30", hrs:7.5} : {from:"14:00", to:"22:00", hrs:8.0},
+    night:     aroojDay ? {from:"21:30", to:"06:00", hrs:8.5} : {from:"22:00", to:"06:00", hrs:8.0},
+  };
+}
+
+function render(grid, days, start){
+  const end = new Date(start); end.setDate(end.getDate()+days-1);
+  let h = `<div class="rota-title">MOSTYN BROADWAY &nbsp;${fmtDate(start)} TO ${fmtDate(end)}</div>`;
+  h += `<div class="rotawrap"><table class="rota"><thead><tr>
+    <th class="h-date" colspan="2">DATE &amp; DAY</th>
+    <th class="h-station">WORK STATION</th>
+    <th class="h-name">NAME</th><th class="h-morning" colspan="3">MORNING SHIFT</th>
+    <th class="h-name">NAME</th><th class="h-afternoon" colspan="3">AFTERNOON SHIFT</th>
+    <th class="h-name">NAME</th><th class="h-night" colspan="3">NIGHT SHIFT</th>
+  </tr></thead><tbody>`;
+
+  const hours = new Array(EMPLOYEES.length).fill(0);
+  const shiftCount = new Array(EMPLOYEES.length).fill(0);
+
+  for (let d=0; d<days; d++){
+    const dt = new Date(start); dt.setDate(dt.getDate()+d);
+    const t = shiftTimes(grid, d);
+    const cells = [[grid[d][M], t.morning],[grid[d][A], t.afternoon],[grid[d][N], t.night]];
+    const wk = (dt.getDay()===0 || dt.getDay()===6) ? " class=\"weekend\"" : "";
+    h += `<tr${wk}><td class="date">${fmtDate(dt)}</td><td class="day">${DAYNAMES[dt.getDay()]}</td><td class="station">Mostyn</td>`;
+    for (const [p, tm] of cells){
+      hours[p] += tm.hrs; shiftCount[p]++;
+      h += `<td class="name" style="background:${EMPLOYEES[p].color}">${EMPLOYEES[p].name}</td>` +
+           `<td>${tm.from}</td><td>${tm.to}</td><td class="hrs">${tm.hrs.toFixed(2)}</td>`;
+    }
+    h += `</tr>`;
+  }
+  h += `</tbody></table></div>`;
+
+  h += `<div class="tiles">`;
+  EMPLOYEES.forEach((e,i)=>{
+    h += `<div class="tile"><span class="avatar" style="background:${e.color}">${e.name[0]}</span>` +
+         `<span><span class="tname">${e.name}</span><br>` +
+         `<span class="tstat">${shiftCount[i]} shift${shiftCount[i]===1?"":"s"} · ${hours[i].toFixed(1)} hours</span></span></div>`;
+  });
+  h += `</div>`;
+  $("output").innerHTML = h;
+  $("toolbar").style.display = "flex";
+}
+
+/* ================= main ================= */
+function run(){
+  const errBox = $("errBox");
+  errBox.textContent = "";
+  const days = parseInt($("numDays").value||"0",10);
+  const counts = getCounts();
+  const errs = validate(days, counts);
+  if (errs.length){ errBox.textContent = errs.join("\n"); return; }
+
+  const grid = generate(days, counts, blocked);
+  if (!grid){
+    errBox.textContent = "Couldn't build a rota with these numbers and blocked shifts — the rules make this combination impossible. " +
+      "Try moving a shift or two between people, or unblocking a shift.";
+    return;
+  }
+  const start = new Date($("startDate").value + "T00:00:00");
+  render(grid, days, start);
+}
+
+initUI();
+</script>
+</body>
+</html>
