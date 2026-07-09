@@ -24,7 +24,7 @@ This tool reduces the manager's job to the decisions only she can make, and auto
 
 1. **Choose the dates** — first day and length of the rota (default 14 days).
 2. **Set each person's shift count** — with +/− buttons and a live counter that shows when the numbers balance to exactly 3 × days.
-3. **Mark time off** — click M / A / N to block a single shift for a person on a day, or ✕ for the whole day.
+3. **Mark time off** — click M / A / N to block a single shift for a person on a day, or ✕ for the whole day. A whole day off also rules out the *previous* evening's night shift, since 22:00–06:00 would run past midnight into the day off.
 4. **Generate** — a constraint solver (randomised backtracking over all 42 slots) fills the rota so that *every* rule above holds. If a combination is impossible — say, all four night-capable workers blocked on the same night — it says so in plain English instead of producing a broken rota. "Generate again" gives a different valid arrangement with the same numbers.
 
 The output looks exactly like the rota everyone is used to — same columns, same colour coding, same shift times including the 21:30 handover on Arooj's days — plus a per-person summary of shifts and hours. One click prints it on A4 landscape or saves it as a PDF.
