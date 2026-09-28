@@ -63,7 +63,7 @@
   input[type=number]{width:74px; text-align:center;}
 
   /* employee steppers */
-  .emps{display:grid; grid-template-columns:repeat(auto-fill,minmax(255px,1fr)); gap:12px;}
+  .emps{display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr)); gap:12px;}
   .emp{
     display:flex; align-items:center; gap:12px;
     border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fdfdfb;
@@ -109,8 +109,25 @@
   .seg.all{background:#e3e1d6;}
   .seg.all:hover{background:#d0cdbf;}
   .seg.all.blk{background:var(--night); color:#fff;}
+  td.cell.rule{background:repeating-linear-gradient(135deg, transparent 0 4px, rgba(38,43,54,.06) 4px 8px);}
   .hint{font-size:.74rem; color:var(--muted); margin-top:10px;}
   .hint b{color:var(--ink);}
+
+  /* delivery picker */
+  .deliv{display:flex; flex-direction:column; gap:10px;}
+  .deliv-row{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .deliv-date{font-weight:700; font-size:.82rem; min-width:84px; font-variant-numeric:tabular-nums;}
+  .picks{display:flex; flex-wrap:wrap; gap:6px;}
+  .pick{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 11px 5px 7px; border-radius:999px; border:1px solid var(--line-strong);
+    background:#fff; color:var(--ink); font-size:.72rem; font-weight:600; cursor:pointer;
+    transition:background .12s, border-color .12s;
+  }
+  .pick i{width:10px; height:10px; border-radius:50%; background:var(--c); border:1px solid rgba(38,43,54,.2);}
+  .pick:hover{background:var(--paper);}
+  .pick[aria-pressed="true"]{background:var(--c); border-color:var(--ink); font-weight:800;}
+  .none{font-size:.82rem; color:var(--muted);}
 
   /* total + generate */
   .totalbar{display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
@@ -153,6 +170,8 @@
   th.h-morning{background:var(--morning);}
   th.h-afternoon{background:var(--afternoon);}
   th.h-night{background:var(--night); color:#fff;}
+  th.h-deliv{background:#00b0f0; color:var(--ink);}
+  td.nodeliv{background:#ecebe6;}
   td.date, td.day{font-weight:700;}
   td.station{color:var(--muted);}
   td.name{font-weight:800;}
@@ -195,7 +214,7 @@
     <span class="shiftdots" aria-hidden="true"><i class="m"></i><i class="a"></i><i class="n"></i></span>
     <div>
       <h1>Mostyn Rota Maker</h1>
-      <p>Mostyn Broadway &middot; build the fortnight's rota in three steps, then print it</p>
+      <p>Mostyn Broadway &middot; build the fortnight's rota in four steps, then print it</p>
     </div>
   </div>
 </header>
@@ -225,6 +244,14 @@
 
 <section class="card">
   <div class="step-tag">Step 3</div>
+  <h2>Tuesday delivery <small>4 hours &mdash; pick who's doing it each Tuesday</small></h2>
+  <div class="deliv" id="delivWrap"></div>
+  <div class="hint">You can pick more than one person (e.g. both Ridas). Whoever does the delivery won't be given a regular shift that Tuesday,
+    or the Monday night shift that runs into it. The 4 hours are added to their total.</div>
+</section>
+
+<section class="card">
+  <div class="step-tag">Step 4</div>
   <h2>Time off <small>optional &mdash; skip if everyone is available</small></h2>
   <div class="offwrap" id="offGridWrap"></div>
   <div class="hint">Click <b>M</b> (morning), <b>A</b> (afternoon) or <b>N</b> (night) to block that shift for that person on that day &mdash; red means blocked.
@@ -251,30 +278,41 @@
 
 <footer>
   Rules applied automatically: one shift per person per day &middot; Arooj afternoons only (finishing 21:30) &middot;
-  Elaine &amp; Rida mornings only &middot; nobody moves to an earlier shift than the day before &middot;
-  a whole day off also rules out the night shift that would run into it.
+  Wes afternoons only &middot; Elaine &amp; Rida Fatima mornings only &middot; Jerry nights only &middot; Elaine never on Saturdays &middot;
+  Rida Fatima never on Sundays &middot; nobody moves to an earlier shift than the day before &middot;
+  a whole day off (or a delivery day) also rules out the night shift that would run into it.
 </footer>
 
 <script>
 "use strict";
 /* ================= configuration ================= */
 const M=0, A=1, N=2;
+const SUN=0, TUE=2, SAT=6;                  // Date.getDay() values
+// ini = avatar initials, def = default shift count, noDays = weekdays this person never works
 const EMPLOYEES = [
-  {name:"HASSAN", allowed:[M,A,N], color:"#cfd8dc", note:"any shift",             def:5},
-  {name:"ELAINE", allowed:[M],     color:"#e6b8e6", note:"mornings only",         def:8},
-  {name:"AROOJ",  allowed:[A],     color:"#f4b6c2", note:"2pm–9:30pm only",  def:6},
-  {name:"RIDA",   allowed:[M],     color:"#b6e2b6", note:"mornings only",         def:5},
-  {name:"USAMA",  allowed:[M,A,N], color:"#ffe066", note:"any shift",             def:6},
-  {name:"SHAH",   allowed:[M,A,N], color:"#bcd0f0", note:"any shift",             def:8},
-  {name:"WES",    allowed:[M,A,N], color:"#ffd9b3", note:"any shift",             def:4},
+  {name:"HASSAN",      ini:"H",  allowed:[M,A,N], color:"#cfd8dc", note:"any shift",                   def:5},
+  {name:"ELAINE",      ini:"E",  allowed:[M],     color:"#e6b8e6", note:"mornings only, no Saturdays", def:4, noDays:[SAT]},
+  {name:"AROOJ",       ini:"A",  allowed:[A],     color:"#f4b6c2", note:"2pm–9:30pm only",             def:5},
+  {name:"RIDA FATIMA", ini:"RF", allowed:[M],     color:"#b6e2b6", note:"mornings only, no Sundays",   def:5, noDays:[SUN]},
+  {name:"USAMA",       ini:"U",  allowed:[M,A,N], color:"#ffe066", note:"any shift",                   def:7},
+  {name:"JERRY",       ini:"J",  allowed:[N],     color:"#bcd0f0", note:"nights only",                 def:7},
+  {name:"WES",         ini:"W",  allowed:[A],     color:"#ffd9b3", note:"afternoons only",             def:4},
+  {name:"ZEESHAN",     ini:"Ze", allowed:[M,A,N], color:"#7ccf8e", note:"any shift",                   def:3},
+  {name:"ZAHEER",      ini:"Za", allowed:[M,A,N], color:"#9ee0e6", note:"any shift",                   def:0},
+  {name:"RIDA BILAL",  ini:"RB", allowed:[M,A,N], color:"#cdbff0", note:"any shift",                   def:2},
 ];
-const AROOJ = 2, ELAINE = 1, RIDA = 3;
+const AROOJ = EMPLOYEES.findIndex(e => e.name === "AROOJ");
+// onlyOn[s] = people who can only ever work shift s (e.g. onlyOn[M] = the mornings-only people)
+const onlyOn = [M,A,N].map(s => EMPLOYEES.map((_,p)=>p).filter(p => EMPLOYEES[p].allowed.length === 1 && EMPLOYEES[p].allowed[0] === s));
+const DELIVERY_DAY = TUE, DELIVERY_HRS = 4;
 
 /* ================= UI setup ================= */
 const $ = id => document.getElementById(id);
 
 // blocked[p] = Map: day index -> Set of shifts (M/A/N) the person cannot work that day
 const blocked = EMPLOYEES.map(()=>new Map());
+// delivery = Map: day index of a Tuesday -> Set of people doing that day's delivery
+const delivery = new Map();
 
 const isBlocked = (p,d,s) => { const set = blocked[p].get(d); return set ? set.has(s) : false; };
 const setBlocked = (p,d,s,on) => {
@@ -295,7 +333,7 @@ function initUI(){
     const div = document.createElement("div");
     div.className = "emp";
     div.innerHTML =
-      `<span class="avatar" style="background:${e.color}">${e.name[0]}</span>` +
+      `<span class="avatar" style="background:${e.color}">${e.ini}</span>` +
       `<span class="info"><span class="name">${e.name}</span><br><span class="note">${e.note}</span></span>` +
       `<span class="stepper">` +
         `<button class="bump" data-i="${i}" data-d="-1" aria-label="fewer shifts for ${e.name}">&minus;</button>` +
@@ -312,12 +350,51 @@ function initUI(){
       updateTotal();
     });
   });
-  $("numDays").addEventListener("input", ()=>{ updateTotal(); buildOffGrid(); });
-  $("startDate").addEventListener("input", buildOffGrid);
+  $("numDays").addEventListener("input", ()=>{ updateTotal(); buildRangeUI(); });
+  $("startDate").addEventListener("input", buildRangeUI);
   $("btnGen").addEventListener("click", run);
   $("btnShuffle").addEventListener("click", run);
   updateTotal();
-  buildOffGrid();
+  buildRangeUI();
+}
+
+// the two date-dependent steps: Tuesday delivery and time off
+function buildRangeUI(){ buildDelivery(); buildOffGrid(); }
+
+function buildDelivery(){
+  const wrap = $("delivWrap");
+  const days = parseInt($("numDays").value||"0",10);
+  const startVal = $("startDate").value;
+  if (!days || days<1 || !startVal){ wrap.innerHTML=""; return; }
+  const start = new Date(startVal + "T00:00:00");
+
+  // drop picks that are no longer on a Tuesday inside the range
+  for (const d of [...delivery.keys()])
+    if (d >= days || dayDate(start,d).getDay() !== DELIVERY_DAY) delivery.delete(d);
+
+  let h = "";
+  for (let d=0; d<days; d++){
+    const dt = dayDate(start,d);
+    if (dt.getDay() !== DELIVERY_DAY) continue;
+    const who = delivery.get(d) || new Set();
+    h += `<div class="deliv-row" role="group" aria-label="Delivery on ${fmtDate(dt)}">` +
+         `<div class="deliv-date">${DAYNAMES[dt.getDay()].slice(0,3)} ${pad(dt.getDate())}/${pad(dt.getMonth()+1)}</div><div class="picks">`;
+    EMPLOYEES.forEach((e,p)=>{
+      h += `<button type="button" class="pick" style="--c:${e.color}" aria-pressed="${who.has(p)}" data-d="${d}" data-p="${p}"><i></i>${e.name}</button>`;
+    });
+    h += `</div></div>`;
+  }
+  wrap.innerHTML = h || `<p class="none">No Tuesdays in these dates, so there's no delivery to arrange.</p>`;
+  wrap.querySelectorAll(".pick").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const d = +b.dataset.d, p = +b.dataset.p;
+      let who = delivery.get(d);
+      if (!who){ who = new Set(); delivery.set(d,who); }
+      if (who.has(p)) who.delete(p); else who.add(p);
+      if (!who.size) delivery.delete(d);
+      b.setAttribute("aria-pressed", who.has(p));
+    });
+  });
 }
 
 function buildOffGrid(){
@@ -330,16 +407,24 @@ function buildOffGrid(){
   blocked.forEach(map => { for (const d of [...map.keys()]) if (d >= days) map.delete(d); });
 
   let h = `<table class="offgrid" aria-label="Time off — block shifts per person per day"><thead><tr><th scope="col"></th>`;
+  const dows = [];
   for (let d=0; d<days; d++){
     const dt = new Date(start); dt.setDate(dt.getDate()+d);
+    dows.push(dt.getDay());
     const wk = (dt.getDay()===0 || dt.getDay()===6) ? " class=\"wk\"" : "";
     h += `<th scope="col"${wk}>${DAYNAMES[dt.getDay()].slice(0,3)}<br>${pad(dt.getDate())}/${pad(dt.getMonth()+1)}</th>`;
   }
   h += `</tr></thead><tbody>`;
   const SEGS = [["M",M],["A",A],["N",N]];
   EMPLOYEES.forEach((e,p)=>{
-    h += `<tr><td class="nm"><span class="avatar" style="display:inline-flex;width:20px;height:20px;font-size:.6rem;vertical-align:-5px;background:${e.color}">${e.name[0]}</span> ${e.name}</td>`;
+    h += `<tr><td class="nm"><span class="avatar" style="display:inline-flex;width:20px;height:20px;font-size:.6rem;vertical-align:-5px;background:${e.color}">${e.ini}</span> ${e.name}</td>`;
     for (let d=0; d<days; d++){
+      if ((e.noDays||[]).includes(dows[d])){           // a weekday this person never works
+        h += `<td class="cell rule" title="${nice(e.name)} doesn't work ${DAYNAMES[dows[d]]}s">` +
+             SEGS.map(([lbl])=>`<span class="seg na" aria-hidden="true">${lbl}</span>`).join("") +
+             `<span class="seg na" aria-hidden="true">&times;</span></td>`;
+        continue;
+      }
       h += `<td class="cell">`;
       const dayLbl = `day ${d+1} for ${e.name}`;
       for (const [lbl,s] of SEGS){
@@ -347,7 +432,7 @@ function buildOffGrid(){
         const blk = !na && isBlocked(p,d,s);
         h += na
           ? `<span class="seg na" aria-hidden="true">${lbl}</span>`
-          : `<span class="seg${blk?" blk":""}" role="button" tabindex="0" aria-pressed="${blk}" aria-label="block ${["morning","afternoon","night"][s]} ${dayLbl}" data-p="${p}" data-d="${d}" data-s="${s}">${lbl}</span>`;
+          : `<span class="seg${blk?" blk":""}" role="button" tabindex="0" aria-pressed="${blk}" aria-label="block ${SHIFTNAMES[s]} ${dayLbl}" data-p="${p}" data-d="${d}" data-s="${s}">${lbl}</span>`;
       }
       h += `<span class="seg all${fullyOff(p,d)?" blk":""}" role="button" tabindex="0" aria-pressed="${fullyOff(p,d)}" aria-label="whole ${dayLbl} off" data-p="${p}" data-d="${d}" data-s="all">&times;</span></td>`;
     }
@@ -388,7 +473,22 @@ function updateTotal(){
 }
 
 /* ================= validation ================= */
-function validate(days, counts){
+// Everything that stops someone working, as blocks for the solver: time off from step 4,
+// weekdays they never work, and their delivery Tuesdays. The last two count as a whole
+// day off, which also rules out the night shift before it (that runs past midnight into it).
+function effectiveBlocks(days, start){
+  return EMPLOYEES.map((e,p)=>{
+    const map = new Map();
+    for (let d=0; d<days; d++){
+      const wholeDay = (e.noDays||[]).includes(dayDate(start,d).getDay()) || !!delivery.get(d)?.has(p);
+      const set = new Set(wholeDay ? e.allowed : (blocked[p].get(d) || []));
+      if (set.size) map.set(d,set);
+    }
+    return map;
+  });
+}
+
+function validate(days, counts, blk, start){
   const errs = [];
   const need = days*3;
   const tot = counts.reduce((a,b)=>a+b,0);
@@ -397,15 +497,21 @@ function validate(days, counts){
   if (tot !== need) errs.push(`Total shifts must be exactly ${need} (3 per day × ${days} days). Currently ${tot}.`);
   counts.forEach((c,i)=>{
     let offDays = 0;
-    for (let d=0; d<days; d++) if (fullyOff(i,d)) offDays++;
+    for (let d=0; d<days; d++) if (EMPLOYEES[i].allowed.every(s => blk[i].get(d)?.has(s))) offDays++;
     const avail = days - offDays;
     if (c > days) errs.push(`${EMPLOYEES[i].name} cannot work more than ${days} shifts (max 1 per day).`);
-    else if (c > avail) errs.push(`${EMPLOYEES[i].name} is fully unavailable on ${offDays} day(s), so can work at most ${avail} shifts.`);
+    else if (c > avail) errs.push(`${EMPLOYEES[i].name} can't work on ${offDays} of these days (time off, delivery, or a day they never work), so can have at most ${avail} shifts.`);
   });
-  if (counts[ELAINE] + counts[RIDA] > days)
-    errs.push(`Elaine + Rida together cannot exceed ${days} — they can only work the ${days} morning slots.`);
-  if (counts[AROOJ] > days)
-    errs.push(`Arooj cannot exceed ${days} — she can only work the ${days} afternoon slots.`);
+  onlyOn.forEach((ps,s)=>{
+    if (ps.length < 2) return;                      // one person alone is already covered by the max-1-per-day check
+    if (ps.reduce((a,p)=>a+counts[p],0) > days)
+      errs.push(`${ps.map(p=>nice(EMPLOYEES[p].name)).join(" + ")} together cannot exceed ${days} — they can only work the ${days} ${SHIFTNAMES[s]} slots.`);
+  });
+  for (let d=0; d<days; d++){
+    const dt = dayDate(start,d);
+    if (dt.getDay() === DELIVERY_DAY && !delivery.get(d)?.size)
+      errs.push(`Choose who's doing the delivery on ${DAYNAMES[DELIVERY_DAY]} ${fmtDate(dt)} (step 3).`);
+  }
   return errs;
 }
 
@@ -415,7 +521,8 @@ function validate(days, counts){
    Rules enforced:
    - one shift per person per day
    - allowed shifts per person
-   - blocked shifts / days off are never scheduled
+   - blocked shifts / days off are never scheduled (blk also carries each
+     person's never-work weekdays and delivery Tuesdays as whole days off)
    - a night shift is never given to someone whose NEXT day is fully off,
      because that shift runs 22:00 -> 06:00 into their day off
    - next-day shift must be the same or later than the previous day's shift
@@ -464,8 +571,11 @@ function solve(days, counts, blk, seed, stat){
   function prune(k){
     // restricted people must still fit in their only shift type
     const after = slotsAfter[k];
-    if (rem[ELAINE]+rem[RIDA] > after[M]) return true;
-    if (rem[AROOJ] > after[A]) return true;
+    for (let s=0; s<3; s++){
+      let need = 0;
+      for (const p of onlyOn[s]) need += rem[p];
+      if (need > after[s]) return true;
+    }
     return false;
   }
 
@@ -528,8 +638,11 @@ function generate(days, counts, blk){
 
 /* ================= rendering ================= */
 const DAYNAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const SHIFTNAMES = ["morning","afternoon","night"];
 const pad = n => String(n).padStart(2,"0");
 const fmtDate = dt => `${pad(dt.getDate())}/${pad(dt.getMonth()+1)}/${dt.getFullYear()}`;
+const dayDate = (start,d) => { const dt = new Date(start); dt.setDate(dt.getDate()+d); return dt; };
+const nice = name => name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());   // "RIDA FATIMA" -> "Rida Fatima"
 
 function shiftTimes(grid, d){
   const aroojDay = grid[d][A] === AROOJ;
@@ -549,10 +662,12 @@ function render(grid, days, start){
     <th class="h-name" scope="col">NAME</th><th class="h-morning" colspan="3" scope="colgroup">MORNING SHIFT</th>
     <th class="h-name" scope="col">NAME</th><th class="h-afternoon" colspan="3" scope="colgroup">AFTERNOON SHIFT</th>
     <th class="h-name" scope="col">NAME</th><th class="h-night" colspan="3" scope="colgroup">NIGHT SHIFT</th>
+    <th class="h-deliv" colspan="2" scope="colgroup">DELIVERY</th>
   </tr></thead><tbody>`;
 
   const hours = new Array(EMPLOYEES.length).fill(0);
   const shiftCount = new Array(EMPLOYEES.length).fill(0);
+  const delivCount = new Array(EMPLOYEES.length).fill(0);
 
   for (let d=0; d<days; d++){
     const dt = new Date(start); dt.setDate(dt.getDate()+d);
@@ -565,15 +680,25 @@ function render(grid, days, start){
       h += `<td class="name" style="background:${EMPLOYEES[p].color}">${EMPLOYEES[p].name}</td>` +
            `<td>${tm.from}</td><td>${tm.to}</td><td class="hrs">${tm.hrs.toFixed(2)}</td>`;
     }
+    const who = [...(delivery.get(d) || [])].sort((a,b)=>a-b);
+    if (who.length){
+      who.forEach(p => { hours[p] += DELIVERY_HRS; delivCount[p]++; });
+      const bg = who.length === 1 ? ` style="background:${EMPLOYEES[who[0]].color}"` : "";
+      h += `<td class="name"${bg}>${who.map(p=>EMPLOYEES[p].name).join(" &amp; ")}</td><td class="hrs">${DELIVERY_HRS.toFixed(2)}</td>`;
+    } else {
+      h += `<td class="nodeliv" colspan="2"></td>`;
+    }
     h += `</tr>`;
   }
   h += `</tbody></table></div>`;
 
   h += `<div class="tiles">`;
   EMPLOYEES.forEach((e,i)=>{
-    h += `<div class="tile"><span class="avatar" style="background:${e.color}">${e.name[0]}</span>` +
+    const dc = delivCount[i];
+    h += `<div class="tile"><span class="avatar" style="background:${e.color}">${e.ini}</span>` +
          `<span><span class="tname">${e.name}</span><br>` +
-         `<span class="tstat">${shiftCount[i]} shift${shiftCount[i]===1?"":"s"} · ${hours[i].toFixed(1)} hours</span></span></div>`;
+         `<span class="tstat">${shiftCount[i]} shift${shiftCount[i]===1?"":"s"}` +
+         `${dc ? ` + ${dc} deliver${dc===1?"y":"ies"}` : ""} · ${hours[i].toFixed(1)} hours</span></span></div>`;
   });
   h += `</div>`;
   $("output").innerHTML = h;
@@ -586,12 +711,13 @@ function run(){
   errBox.textContent = "";
   const days = parseInt($("numDays").value||"0",10);
   const counts = getCounts();
-  const errs = validate(days, counts);
   const start = new Date($("startDate").value + "T00:00:00");
-  if (isNaN(start)) errs.unshift("Choose a valid start date first.");
+  if (isNaN(start)){ errBox.textContent = "Choose a valid start date first."; return; }
+  const blk = effectiveBlocks(days, start);
+  const errs = validate(days, counts, blk, start);
   if (errs.length){ errBox.textContent = errs.join("\n"); return; }
 
-  const grid = generate(days, counts, blocked);
+  const grid = generate(days, counts, blk);
   if (!grid){
     errBox.textContent = "Couldn't build a rota with these numbers and blocked shifts — the rules make this combination impossible. " +
       "Try moving a shift or two between people, or unblocking a shift.";
