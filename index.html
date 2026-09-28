@@ -278,7 +278,7 @@
 
 <footer>
   Rules applied automatically: one shift per person per day &middot; Arooj afternoons only (finishing 21:30) &middot;
-  Wes afternoons only &middot; Elaine &amp; Rida Fatima mornings only &middot; Jerry nights only &middot; Elaine never on Saturdays &middot;
+  Wes afternoons only &middot; Elaine &amp; Rida Fatima mornings only &middot; Jerry nights only &middot; Rida Bilal no nights &middot; Elaine never on Saturdays &middot;
   Rida Fatima never on Sundays &middot; nobody moves to an earlier shift than the day before &middot;
   a whole day off (or a delivery day) also rules out the night shift that would run into it.
 </footer>
@@ -299,7 +299,7 @@ const EMPLOYEES = [
   {name:"WES",         ini:"W",  allowed:[A],     color:"#ffd9b3", note:"afternoons only",             def:4},
   {name:"ZEESHAN",     ini:"Ze", allowed:[M,A,N], color:"#7ccf8e", note:"any shift",                   def:3},
   {name:"ZAHEER",      ini:"Za", allowed:[M,A,N], color:"#9ee0e6", note:"any shift",                   def:0},
-  {name:"RIDA BILAL",  ini:"RB", allowed:[M,A,N], color:"#cdbff0", note:"any shift",                   def:2},
+  {name:"RIDA BILAL",  ini:"RB", allowed:[M,A],   color:"#cdbff0", note:"no nights",                   def:2},
 ];
 const AROOJ = EMPLOYEES.findIndex(e => e.name === "AROOJ");
 // onlyOn[s] = people who can only ever work shift s (e.g. onlyOn[M] = the mornings-only people)

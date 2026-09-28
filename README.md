@@ -13,7 +13,7 @@ What made it genuinely hard wasn't the size, it was the rules. Every single slot
 1. **Rest rule** — nobody can work two shifts close together. There must be at least two full shift-slots between one shift and the next, which in practice means nobody can ever move to an *earlier* shift than the one they worked the day before (a night shift can only be followed by another night, or a day off).
 2. **Arooj** can only work afternoons, and only until 21:30 — so on her days the afternoon shift is 7.5 hours and the night shift stretches to 21:30–06:00 (8.5 hours). The times of *other people's* shifts change depending on who works the afternoon.
 3. **Elaine and Rida Fatima** can only work mornings — so between them they compete for the same 14 slots. Elaine never works Saturdays and Rida Fatima never works Sundays.
-4. **Jerry** only works nights, and **Wes** only works afternoons (so he and Arooj share the 14 afternoon slots).
+4. **Jerry** only works nights, and **Wes** only works afternoons (so he and Arooj share the 14 afternoon slots). **Rida Bilal** never works nights.
 5. Everyone needs the **right number of shifts** for the fortnight, and the totals have to land on exactly 42.
 6. Every **Tuesday there's a 4-hour delivery**, and whoever does it can't also be on a regular shift that day.
 7. On top of all that, people ask for **specific days or shifts off**.
