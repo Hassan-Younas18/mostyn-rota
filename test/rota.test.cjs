@@ -49,7 +49,17 @@ function solve(f,seed=42){
 
 test('normal fortnight rotas remain valid without fixed shifts',()=>{
   const f=setup();
-  for(let seed=1;seed<=10;seed++) verify(f,solve(f,seed*7919));
+  const blocks=f.app.effectiveBlocks(f.days,f.date);
+  for(let seed=1;seed<=10;seed++){
+    const stat={capped:false};
+    const grid=f.app.solve(f.days,f.counts,blocks,seed*7919,stat,f.locks);
+    if(grid) verify(f,grid);
+    else {
+      // A single attempt can hit its budget; the app retries through generate().
+      assert.equal(stat.capped,true,'A failed attempt must not report a valid rota as impossible');
+      verify(f,f.app.generate(f.days,f.counts,blocks,f.locks));
+    }
+  }
 });
 
 test('Jerry can be fixed to an afternoon and then a night',()=>{
@@ -107,7 +117,7 @@ const conflicts=[
   ['two shifts on one day',f=>{f.locks[0][1]=f.locks[0][2]=f.people.JERRY;},/more than one fixed shift/],
   ['too many fixed shifts',f=>{f.counts[f.people.JERRY]=0;f.locks[0][1]=f.people.JERRY;},/only 0 total shifts/],
   ['time off',f=>{f.locks[0][1]=f.people.JERRY;f.app.blocked[f.people.JERRY].set(0,new Set([1]));},/conflicts with time off/],
-  ['non-working weekday',f=>{f.locks[5][0]=f.people.ELAINE;},/non-working weekday/],
+  ['non-working weekday',f=>{f.locks[6][0]=f.people['RIDA FATIMA'];},/non-working weekday/],
   ['delivery day',f=>{f.locks[1][1]=f.people.HASSAN;},/delivery/],
   ['night before delivery',f=>{f.locks[0][2]=f.people.HASSAN;},/runs into their day off or delivery/],
   ['night before whole day off',f=>{f.locks[0][2]=f.people.JERRY;f.app.blocked[f.people.JERRY].set(1,new Set([1,2]));},/runs into their day off/],
