@@ -53,11 +53,11 @@
 
   .row{display:flex; gap:22px; flex-wrap:wrap;}
   label{display:block; font-size:.75rem; font-weight:600; color:var(--muted); margin-bottom:5px;}
-  input[type=date], input[type=number]{
+  input[type=date], input[type=number], select{
     padding:9px 12px; border:1px solid var(--line-strong); border-radius:9px;
     font:inherit; font-variant-numeric:tabular-nums; background:#fff; color:var(--ink);
   }
-  input:focus-visible, button:focus-visible, .seg:focus-visible{
+  input:focus-visible, select:focus-visible, button:focus-visible, .seg:focus-visible{
     outline:2px solid var(--night); outline-offset:2px;
   }
   input[type=number]{width:74px; text-align:center;}
@@ -128,6 +128,27 @@
   .pick:hover{background:var(--paper);}
   .pick[aria-pressed="true"]{background:var(--c); border-color:var(--ink); font-weight:800;}
   .none{font-size:.82rem; color:var(--muted);}
+
+  /* fixed shift picker */
+  .fixedgrid{width:100%; border-collapse:collapse; font-size:.8rem;}
+  .fixedgrid th, .fixedgrid td{padding:8px; border-bottom:1px solid var(--line); text-align:left;}
+  .fixedgrid thead th{white-space:nowrap;}
+  .fixedgrid tbody th{min-width:110px; font-weight:600;}
+  .fixedgrid select{width:100%; min-width:150px; font-size:.8rem; padding:8px;}
+  .fixedgrid select.is-fixed{border-color:var(--night); background:#edf0fa; font-weight:700;}
+  .fixed-actions{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px;}
+  .fixed-actions .hint{margin:0; flex:1; min-width:180px;}
+  .fixed-badge{display:block; font-size:.58rem; font-weight:600; letter-spacing:.04em;}
+  .btn:disabled{opacity:.5; cursor:default; transform:none;}
+  @media (max-width:640px){
+    .fixedgrid, .fixedgrid tbody, .fixedgrid tr{display:block;}
+    .fixedgrid thead{position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%);}
+    .fixedgrid tr{padding:12px 0; border-bottom:1px solid var(--line);}
+    .fixedgrid tbody th{display:block; border:0; padding:0 0 6px;}
+    .fixedgrid td{display:flex; align-items:center; gap:10px; border:0; padding:4px 0;}
+    .fixedgrid td::before{content:attr(data-shift); width:72px; flex:none; color:var(--muted);}
+    .fixedgrid select{min-width:0;}
+  }
 
   /* total + generate */
   .totalbar{display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
@@ -214,7 +235,7 @@
     <span class="shiftdots" aria-hidden="true"><i class="m"></i><i class="a"></i><i class="n"></i></span>
     <div>
       <h1>Mostyn Rota Maker</h1>
-      <p>Mostyn Broadway &middot; build the fortnight's rota in four steps, then print it</p>
+      <p>Mostyn Broadway &middot; build the fortnight's rota in five steps, then print it</p>
     </div>
   </div>
 </header>
@@ -260,11 +281,26 @@
 </section>
 
 <section class="card">
+  <div class="step-tag">Step 5</div>
+  <h2>Fixed shifts <small>optional &mdash; choose who must work a specific shift</small></h2>
+  <p class="hint" id="fixedHelp">Pick a person to fix that date and shift, or leave it on <b>Automatic</b>.
+    Fixed shifts count towards the totals in step 2 and stay fixed when you generate again.
+    Night shifts belong to the date they start. All time-off, delivery and rest rules still apply.</p>
+  <div class="offwrap" id="fixedGridWrap"></div>
+  <div class="fixed-actions">
+    <p class="hint" id="fixedSummary" role="status"></p>
+    <button type="button" class="btn btn-secondary" id="btnClearFixed">Clear fixed shifts</button>
+  </div>
+  <p class="hint" id="fixedNotice" role="status"></p>
+  <div class="error" id="fixedErrors" role="status"></div>
+</section>
+
+<section class="card">
   <div class="totalbar">
     <div class="total" id="totalBox">0 of 42 shifts</div>
     <button class="btn btn-primary" id="btnGen">Generate rota</button>
   </div>
-  <div class="error" id="errBox"></div>
+  <div class="error" id="errBox" role="alert"></div>
 </section>
 
 <div class="toolbar" id="toolbar">
@@ -313,6 +349,9 @@ const $ = id => document.getElementById(id);
 const blocked = EMPLOYEES.map(()=>new Map());
 // delivery = Map: day index of a Tuesday -> Set of people doing that day's delivery
 const delivery = new Map();
+// fixed = Map: calendar date (YYYY-MM-DD) -> Map of shift -> person.
+// Calendar dates keep assignments on the same date when the rota range changes.
+const fixed = new Map();
 
 const isBlocked = (p,d,s) => { const set = blocked[p].get(d); return set ? set.has(s) : false; };
 const setBlocked = (p,d,s,on) => {
@@ -341,32 +380,52 @@ function initUI(){
         `<button class="bump" data-i="${i}" data-d="1" aria-label="more shifts for ${e.name}">+</button>` +
       `</span>`;
     box.appendChild(div);
-    div.querySelector("input").addEventListener("input", updateTotal);
+    div.querySelector("input").addEventListener("input", ()=>{ updateTotal(); updateFixedFeedback(); });
   });
   box.querySelectorAll(".bump").forEach(b=>{
     b.addEventListener("click", ()=>{
       const inp = $("cnt"+b.dataset.i);
       inp.value = Math.max(0, (parseInt(inp.value||"0",10)) + (+b.dataset.d));
       updateTotal();
+      updateFixedFeedback();
     });
   });
-  $("numDays").addEventListener("input", ()=>{ updateTotal(); buildRangeUI(); });
-  $("startDate").addEventListener("input", buildRangeUI);
+  $("numDays").addEventListener("input", updateTotal);
+  // Wait until date edits are committed before removing out-of-range choices.
+  $("numDays").addEventListener("change", buildRangeUI);
+  $("startDate").addEventListener("change", buildRangeUI);
   $("btnGen").addEventListener("click", run);
   $("btnShuffle").addEventListener("click", run);
+  $("btnClearFixed").addEventListener("click", ()=>{
+    fixed.clear();
+    $("fixedNotice").textContent = "";
+    buildFixedGrid();
+    invalidateOutput();
+  });
+  // Never leave a previous rota available for printing after its inputs change.
+  document.querySelector("main").addEventListener("input", invalidateOutput);
+  document.querySelector("main").addEventListener("change", invalidateOutput);
+  $("empInputs").addEventListener("click", ev=>{ if (ev.target.closest(".bump")) invalidateOutput(); });
   updateTotal();
   buildRangeUI();
 }
 
-// the two date-dependent steps: Tuesday delivery and time off
-function buildRangeUI(){ buildDelivery(); buildOffGrid(); }
+function invalidateOutput(){
+  $("output").innerHTML = "";
+  $("toolbar").style.display = "none";
+  $("errBox").textContent = "";
+}
+
+// The date-dependent steps: Tuesday delivery, time off and fixed shifts.
+function buildRangeUI(){ buildDelivery(); buildOffGrid(); buildFixedGrid(); }
 
 function buildDelivery(){
   const wrap = $("delivWrap");
   const days = parseInt($("numDays").value||"0",10);
   const startVal = $("startDate").value;
-  if (!days || days<1 || !startVal){ wrap.innerHTML=""; return; }
+  if (!days || days<1 || days>28 || !startVal){ wrap.innerHTML=""; return; }
   const start = new Date(startVal + "T00:00:00");
+  if (isNaN(start)){ wrap.innerHTML=""; return; }
 
   // drop picks that are no longer on a Tuesday inside the range
   for (const d of [...delivery.keys()])
@@ -393,6 +452,8 @@ function buildDelivery(){
       if (who.has(p)) who.delete(p); else who.add(p);
       if (!who.size) delivery.delete(d);
       b.setAttribute("aria-pressed", who.has(p));
+      updateFixedFeedback();
+      invalidateOutput();
     });
   });
 }
@@ -400,8 +461,9 @@ function buildDelivery(){
 function buildOffGrid(){
   const days = parseInt($("numDays").value||"0",10);
   const startVal = $("startDate").value;
-  if (!days || days<1 || !startVal){ $("offGridWrap").innerHTML=""; return; }
+  if (!days || days<1 || days>28 || !startVal){ $("offGridWrap").innerHTML=""; return; }
   const start = new Date(startVal + "T00:00:00");
+  if (isNaN(start)){ $("offGridWrap").innerHTML=""; return; }
 
   // drop marks that fall outside the new range
   blocked.forEach(map => { for (const d of [...map.keys()]) if (d >= days) map.delete(d); });
@@ -452,10 +514,81 @@ function buildOffGrid(){
         setBlocked(p,d,s,!isBlocked(p,d,s));
       }
       buildOffGrid();                               // re-render to sync state
+      updateFixedFeedback();
+      invalidateOutput();
     };
     seg.addEventListener("click", toggle);
     seg.addEventListener("keydown", ev=>{ if(ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); toggle(); } });
   });
+}
+
+function fixedGrid(days, start){
+  return Array.from({length:days}, (_,d)=>[M,A,N].map(s=>fixed.get(dateKey(dayDate(start,d)))?.get(s) ?? -1));
+}
+
+function buildFixedGrid(){
+  const days = parseInt($("numDays").value||"0",10);
+  const start = new Date($("startDate").value + "T00:00:00");
+  const wrap = $("fixedGridWrap");
+  if (!days || days < 1 || days > 28 || isNaN(start)){
+    wrap.innerHTML = "";
+    $("fixedSummary").textContent = "Choose a valid date range of 1–28 days first.";
+    $("fixedErrors").textContent = "";
+    $("btnClearFixed").disabled = !fixed.size;
+    return;
+  }
+  const dates = Array.from({length:days}, (_,d)=>dayDate(start,d));
+  const inRange = new Set(dates.map(dateKey));
+  let removed = 0;
+  for (const [key, picks] of fixed){
+    if (!inRange.has(key)){ removed += picks.size; fixed.delete(key); }
+  }
+  $("fixedNotice").textContent = removed
+    ? `${removed} fixed shift${removed===1?" was":"s were"} cleared because the date is outside the new rota range.` : "";
+  let h = `<table class="fixedgrid" aria-label="Fix a person to a date and shift" aria-describedby="fixedHelp"><thead><tr>` +
+    `<th scope="col">Date</th><th scope="col" class="h-morning">Morning</th>` +
+    `<th scope="col" class="h-afternoon">Afternoon</th><th scope="col" class="h-night">Night</th></tr></thead><tbody>`;
+  for (const dt of dates){
+    const key = dateKey(dt);
+    h += `<tr><th scope="row">${DAYNAMES[dt.getDay()].slice(0,3)} ${fmtDate(dt)}</th>`;
+    for (const s of [M,A,N]){
+      const chosen = fixed.get(key)?.get(s) ?? -1;
+      h += `<td data-shift="${nice(SHIFTNAMES[s])}"><select data-date="${key}" data-s="${s}" class="${chosen>=0?"is-fixed":""}" aria-label="${nice(SHIFTNAMES[s])} on ${fmtDate(dt)}">` +
+        `<option value="-1">Automatic</option>`;
+      EMPLOYEES.forEach((e,p)=>{
+        if (e.allowed.includes(s)) h += `<option value="${p}"${chosen===p?" selected":""}>${nice(e.name)}</option>`;
+      });
+      h += `</select></td>`;
+    }
+    h += `</tr>`;
+  }
+  wrap.innerHTML = h + `</tbody></table>`;
+  wrap.querySelectorAll("select").forEach(select=>select.addEventListener("change", ()=>{
+    const key = select.dataset.date, s = +select.dataset.s, p = +select.value;
+    if (p < 0){
+      fixed.get(key)?.delete(s);
+      if (!fixed.get(key)?.size) fixed.delete(key);
+    } else {
+      if (!fixed.has(key)) fixed.set(key, new Map());
+      fixed.get(key).set(s,p);
+    }
+    select.classList.toggle("is-fixed", p >= 0);
+    $("fixedNotice").textContent = "";
+    updateFixedFeedback();
+    invalidateOutput();
+  }));
+  updateFixedFeedback();
+}
+
+function updateFixedFeedback(){
+  const days = parseInt($("numDays").value||"0",10);
+  const start = new Date($("startDate").value + "T00:00:00");
+  if (!days || days < 1 || days > 28 || isNaN(start)) return;
+  const locks = fixedGrid(days, start);
+  const total = locks.flat().filter(p=>p>=0).length;
+  $("fixedSummary").textContent = `${total} fixed shift${total===1?"":"s"}; ${days*3-total} to assign automatically.`;
+  $("btnClearFixed").disabled = !total;
+  $("fixedErrors").textContent = validateFixed(days, getCounts(), effectiveBlocks(days,start), start, locks).join("\n");
 }
 
 function getCounts(){ return EMPLOYEES.map((_,i)=> Math.max(0, parseInt($("cnt"+i).value||"0",10))); }
@@ -488,7 +621,34 @@ function effectiveBlocks(days, start){
   });
 }
 
-function validate(days, counts, blk, start){
+function validateFixed(days, counts, blk, start, locks){
+  const errs = [], totals = EMPLOYEES.map(()=>0);
+  const byPerson = Array.from({length:days}, ()=>new Map());
+  for (let d=0; d<days; d++) for (const s of [M,A,N]){
+    const p = locks[d][s];
+    if (p < 0) continue;
+    const e = EMPLOYEES[p], date = fmtDate(dayDate(start,d));
+    const label = `${nice(e.name)}'s fixed ${SHIFTNAMES[s]} on ${date}`;
+    totals[p]++;
+    if (byPerson[d].has(p)) errs.push(`${nice(e.name)} has more than one fixed shift on ${date}. Choose just one.`);
+    byPerson[d].set(p,s);
+    if (!e.allowed.includes(s)) errs.push(`${label} is not an allowed shift for them.`);
+    if (blk[p].get(d)?.has(s)) errs.push(`${label} conflicts with time off, a non-working weekday or a delivery. Change the fixed shift or availability.`);
+    if (s===N && d+1<days && e.allowed.every(next=>blk[p].get(d+1)?.has(next)))
+      errs.push(`${label} runs into their day off or delivery on ${fmtDate(dayDate(start,d+1))}.`);
+  }
+  totals.forEach((total,p)=>{
+    if (total > counts[p]) errs.push(`${nice(EMPLOYEES[p].name)} has ${total} fixed shifts but only ${counts[p]} total shifts in step 2. Increase their total or remove a fixed shift.`);
+  });
+  for (let d=1; d<days; d++) for (const [p,s] of byPerson[d]){
+    const previous = byPerson[d-1].get(p);
+    if (previous !== undefined && s < previous)
+      errs.push(`${nice(EMPLOYEES[p].name)}'s fixed ${SHIFTNAMES[s]} on ${fmtDate(dayDate(start,d))} is too early after their fixed ${SHIFTNAMES[previous]} the day before. Allow a day off or choose the same or a later shift.`);
+  }
+  return errs;
+}
+
+function validate(days, counts, blk, start, locks = Array.from({length:days}, ()=>[-1,-1,-1])){
   const errs = [];
   const need = days*3;
   const tot = counts.reduce((a,b)=>a+b,0);
@@ -512,7 +672,7 @@ function validate(days, counts, blk, start){
     if (dt.getDay() === DELIVERY_DAY && !delivery.get(d)?.size)
       errs.push(`Choose who's doing the delivery on ${DAYNAMES[DELIVERY_DAY]} ${fmtDate(dt)} (step 3).`);
   }
-  return errs;
+  return errs.concat(validateFixed(days, counts, blk, start, locks));
 }
 
 /* ================= solver =================
@@ -521,6 +681,7 @@ function validate(days, counts, blk, start){
    Rules enforced:
    - one shift per person per day
    - allowed shifts per person
+   - fixed assignments are compulsory and count towards each person's total
    - blocked shifts / days off are never scheduled (blk also carries each
      person's never-work weekdays and delivery Tuesdays as whole days off)
    - a night shift is never given to someone whose NEXT day is fully off,
@@ -529,7 +690,7 @@ function validate(days, counts, blk, start){
      (>= 2 shift-slots of rest)
    stat.capped is set when the node budget ran out (result inconclusive)
    rather than the search space being exhausted (provably impossible). */
-function solve(days, counts, blk, seed, stat){
+function solve(days, counts, blk, seed, stat, locks = Array.from({length:days}, ()=>[-1,-1,-1])){
   const blkHas = (p,d,s) => { const set = blk[p].get(d); return set ? set.has(s) : false; };
   let rngState = seed >>> 0;
   const rnd = () => {                       // xorshift32
@@ -539,6 +700,20 @@ function solve(days, counts, blk, seed, stat){
 
   const nE = EMPLOYEES.length;
   const rem = counts.slice();
+  const fixedShift = Array.from({length:days}, ()=>new Array(nE).fill(-1));
+  for (let d=0; d<days; d++) for (const s of [M,A,N]){
+    const p = locks[d][s];
+    if (p < 0) continue;
+    if (!Number.isInteger(p) || p>=nE || fixedShift[d][p]!==-1) return null;
+    fixedShift[d][p] = s;
+  }
+  // Reserve enough of each person's remaining count for all their future locks.
+  const fixedFrom = EMPLOYEES.map((_,p)=>{
+    const a = new Array(days+1).fill(0);
+    for (let d=days-1; d>=0; d--) a[d] = a[d+1] + (fixedShift[d][p]===-1 ? 0 : 1);
+    return a;
+  });
+  if (fixedFrom.some((a,p)=>a[0] > counts[p])) return null;
   // grid[d][s] = employee index or -1
   const grid = Array.from({length:days}, ()=>[-1,-1,-1]);
   const workedShift = Array.from({length:days}, ()=>new Array(nE).fill(-1)); // shift worked by p on day d
@@ -561,10 +736,19 @@ function solve(days, counts, blk, seed, stat){
     for (let d=0; d<days; d++) a[d] = e.allowed.every(s => blkHas(p,d,s));
     return a;
   });
+  // Fixed neighbours constrain automatic shifts too, including the day BEFORE a lock.
+  const eligible = EMPLOYEES.map((e,p)=>Array.from({length:days}, (_,d)=>[M,A,N].map(s=>
+    e.allowed.includes(s) && !blkHas(p,d,s) &&
+    !(s===N && d+1<days && offDay[p][d+1]) &&
+    (locks[d][s]===-1 || locks[d][s]===p) &&
+    (fixedShift[d][p]===-1 || fixedShift[d][p]===s) &&
+    !(d>0 && fixedShift[d-1][p]!==-1 && s<fixedShift[d-1][p]) &&
+    !(d+1<days && fixedShift[d+1][p]!==-1 && s>fixedShift[d+1][p])
+  )));
   // availFrom[p][d] = days from d to the end on which p can work at least one shift
   const availFrom = EMPLOYEES.map((_,p)=>{
     const a = new Array(days+1).fill(0);
-    for (let d=days-1; d>=0; d--) a[d] = a[d+1] + (offDay[p][d] ? 0 : 1);
+    for (let d=days-1; d>=0; d--) a[d] = a[d+1] + (eligible[p][d].some(Boolean) ? 1 : 0);
     return a;
   });
 
@@ -583,9 +767,8 @@ function solve(days, counts, blk, seed, stat){
     const list = [];
     for (let p=0; p<nE; p++){
       if (rem[p] === 0) continue;
-      if (blkHas(p,d,s)) continue;                                  // blocked shift / day off
-      if (s === N && d+1 < days && offDay[p][d+1]) continue;        // night would run into their day off
-      if (!EMPLOYEES[p].allowed.includes(s)) continue;
+      if (!eligible[p][d][s]) continue;
+      if (locks[d][s]!==p && rem[p]<=fixedFrom[p][d]) continue;       // save their remaining shifts for locks
       if (workedShift[d][p] !== -1) continue;                       // already on today
       if (d>0){ const prev = workedShift[d-1][p]; if (prev !== -1 && s < prev) continue; } // rest rule
       list.push(p);
@@ -624,12 +807,12 @@ function solve(days, counts, blk, seed, stat){
   return bt(0) ? grid : null;
 }
 
-function generate(days, counts, blk){
+function generate(days, counts, blk, locks = Array.from({length:days}, ()=>[-1,-1,-1])){
   // several randomised restarts — different seeds give different valid rotas
   for (let attempt=0; attempt<12; attempt++){
     const seed = (Date.now() + attempt*7919 + Math.floor(Math.random()*1e6)) | 1;
     const stat = {capped:false};
-    const g = solve(days, counts, blk, seed, stat);
+    const g = solve(days, counts, blk, seed, stat, locks);
     if (g) return g;
     if (!stat.capped) return null;   // search space exhausted — provably impossible, retrying won't help
   }
@@ -640,6 +823,7 @@ function generate(days, counts, blk){
 const DAYNAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const SHIFTNAMES = ["morning","afternoon","night"];
 const pad = n => String(n).padStart(2,"0");
+const dateKey = dt => `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
 const fmtDate = dt => `${pad(dt.getDate())}/${pad(dt.getMonth()+1)}/${dt.getFullYear()}`;
 const dayDate = (start,d) => { const dt = new Date(start); dt.setDate(dt.getDate()+d); return dt; };
 const nice = name => name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());   // "RIDA FATIMA" -> "Rida Fatima"
@@ -653,7 +837,7 @@ function shiftTimes(grid, d){
   };
 }
 
-function render(grid, days, start){
+function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,-1])){
   const end = new Date(start); end.setDate(end.getDate()+days-1);
   let h = `<div class="rota-title">MOSTYN BROADWAY &nbsp;${fmtDate(start)} TO ${fmtDate(end)}</div>`;
   h += `<div class="rotawrap"><table class="rota"><thead><tr>
@@ -675,9 +859,10 @@ function render(grid, days, start){
     const cells = [[grid[d][M], t.morning],[grid[d][A], t.afternoon],[grid[d][N], t.night]];
     const wk = (dt.getDay()===0 || dt.getDay()===6) ? " class=\"weekend\"" : "";
     h += `<tr${wk}><td class="date">${fmtDate(dt)}</td><td class="day">${DAYNAMES[dt.getDay()]}</td><td class="station">Mostyn</td>`;
-    for (const [p, tm] of cells){
+    for (const [s, [p, tm]] of cells.entries()){
       hours[p] += tm.hrs; shiftCount[p]++;
-      h += `<td class="name" style="background:${EMPLOYEES[p].color}">${EMPLOYEES[p].name}</td>` +
+      const badge = locks[d][s]===p ? `<span class="fixed-badge">Fixed</span>` : "";
+      h += `<td class="name" style="background:${EMPLOYEES[p].color}">${EMPLOYEES[p].name}${badge}</td>` +
            `<td>${tm.from}</td><td>${tm.to}</td><td class="hrs">${tm.hrs.toFixed(2)}</td>`;
     }
     const who = [...(delivery.get(d) || [])].sort((a,b)=>a-b);
@@ -707,23 +892,26 @@ function render(grid, days, start){
 
 /* ================= main ================= */
 function run(){
+  invalidateOutput();
   const errBox = $("errBox");
   errBox.textContent = "";
   const days = parseInt($("numDays").value||"0",10);
   const counts = getCounts();
   const start = new Date($("startDate").value + "T00:00:00");
   if (isNaN(start)){ errBox.textContent = "Choose a valid start date first."; return; }
+  if (!days || days<1 || days>28){ errBox.textContent = "Choose a rota length between 1 and 28 days."; return; }
   const blk = effectiveBlocks(days, start);
-  const errs = validate(days, counts, blk, start);
+  const locks = fixedGrid(days, start);
+  const errs = validate(days, counts, blk, start, locks);
   if (errs.length){ errBox.textContent = errs.join("\n"); return; }
 
-  const grid = generate(days, counts, blk);
+  const grid = generate(days, counts, blk, locks);
   if (!grid){
-    errBox.textContent = "Couldn't build a rota with these numbers and blocked shifts — the rules make this combination impossible. " +
-      "Try moving a shift or two between people, or unblocking a shift.";
+    errBox.textContent = "Couldn't find a rota with these shift totals, time off and fixed shifts. " +
+      "Try changing a fixed shift, moving a shift or two between people, or unblocking a shift.";
     return;
   }
-  render(grid, days, start);
+  render(grid, days, start, locks);
 }
 
 initUI();
