@@ -314,7 +314,7 @@
 
 <footer>
   Rules applied automatically: one shift per person per day &middot; Arooj afternoons only (finishing 21:30) &middot;
-  Wes afternoons only &middot; Elaine &amp; Rida Fatima mornings only &middot; Jerry afternoons and nights &middot; Rida Bilal no nights &middot; Elaine never on Saturdays &middot;
+  Wes afternoons only &middot; Elaine &amp; Rida Fatima mornings only &middot; Jerry afternoons and nights &middot; Usama mornings and nights &middot; Rida Bilal no nights &middot; Elaine never on Saturdays &middot;
   Rida Fatima never on Sundays &middot; nobody moves to an earlier shift than the day before &middot;
   a whole day off (or a delivery day) also rules out the night shift that would run into it.
 </footer>
@@ -330,7 +330,7 @@ const EMPLOYEES = [
   {name:"ELAINE",      ini:"E",  allowed:[M],     color:"#e6b8e6", note:"mornings only, no Saturdays", def:4, noDays:[SAT]},
   {name:"AROOJ",       ini:"A",  allowed:[A],     color:"#f4b6c2", note:"2pm–9:30pm only",             def:5},
   {name:"RIDA FATIMA", ini:"RF", allowed:[M],     color:"#b6e2b6", note:"mornings only, no Sundays",   def:5, noDays:[SUN]},
-  {name:"USAMA",       ini:"U",  allowed:[M,A,N], color:"#ffe066", note:"any shift",                   def:7},
+  {name:"USAMA",       ini:"U",  allowed:[M,N],   color:"#ffe066", note:"mornings and nights",         def:7},
   {name:"JERRY",       ini:"J",  allowed:[A,N],   color:"#bcd0f0", note:"afternoons and nights",       def:7},
   {name:"WES",         ini:"W",  allowed:[A],     color:"#ffd9b3", note:"afternoons only",             def:4},
   {name:"ZEESHAN",     ini:"Ze", allowed:[M,A,N], color:"#7ccf8e", note:"any shift",                   def:3},
