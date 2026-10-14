@@ -123,7 +123,7 @@ test('generated rota editing works with mouse, keyboard, touch layout and print'
     assert.equal((await state()).history,0);
   });
 
-  await t.test('conflicting changes show warnings on screen but hide them in print',async()=>{
+  await t.test('print shows a clean rota while editing labels and warnings stay on screen',async()=>{
     await choose(0,0,5);
     const actual=await state();
     assert.equal(actual.grid[0][0],5);
@@ -131,15 +131,19 @@ test('generated rota editing works with mouse, keyboard, touch layout and print'
     assert.match(actual.warnings,/2 shifts on/);
     assert.equal(await page.locator('#rotaWarnings').isVisible(),true);
     assert.equal(await shift(0,0).locator('.warning-badge').isVisible(),true);
+    assert.equal(await shift(0,0).locator('.edited-badge').isVisible(),true);
+    assert.equal(await shift(0,1).locator('.fixed-badge').isVisible(),true);
     await page.emulateMedia({media:'print'});
     assert.equal(await page.locator('#editHelp').isVisible(),false);
     assert.equal(await page.locator('#toolbar').isVisible(),false);
     assert.equal(await page.locator('#rotaWarnings').isVisible(),false);
     assert.equal(await shift(0,0).isVisible(),true);
-    assert.equal(await page.locator('.warning-badge').evaluateAll(els=>els.every(el=>getComputedStyle(el).display==='none')),true);
+    assert.equal(await page.locator('.fixed-badge, .edited-badge, .warning-badge').evaluateAll(els=>els.every(el=>getComputedStyle(el).display==='none')),true);
     await page.emulateMedia({media:'screen'});
     assert.equal(await page.locator('#rotaWarnings').isVisible(),true);
     assert.equal(await shift(0,0).locator('.warning-badge').isVisible(),true);
+    assert.equal(await shift(0,0).locator('.edited-badge').isVisible(),true);
+    assert.equal(await shift(0,1).locator('.fixed-badge').isVisible(),true);
   });
 
   await t.test('generate again uses the original targets and fixed assignments',async()=>{
