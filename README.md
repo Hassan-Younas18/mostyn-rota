@@ -33,13 +33,24 @@ This tool reduces the manager's job to the decisions only she can make, and auto
 
 The output looks exactly like the rota everyone is used to — same columns including the Tuesday delivery, same colour coding, same shift times including the 21:30 handover on Arooj's days — plus a per-person summary of shifts, deliveries and hours. One click prints it on A4 landscape or saves it as a PDF.
 
+### Adjust a generated rota
+
+- **Click or tap a name** in the generated rota, choose a person, and press **Save change**. The edit window previews any warnings before saving.
+- **Drag a name onto another shift** to swap the two people. Both shifts stay filled. On a phone or with a keyboard, open a shift and choose **Swap with another shift** instead.
+- **Manual changes are allowed even when they break a rule.** Warnings flag allowed shift types, time off, non-working weekdays, deliveries, nights running into days off, rest, multiple shifts on one day, differences from each person's target, and changes to fixed assignments. Warnings also appear when printing.
+- **Hours, shift totals and Arooj's handover times update immediately.** Changed assignments are labelled **Edited**; the original targets and fixed-shift settings remain in steps 2 and 5.
+- Use **Undo last change** to reverse edits, or **Reset edits** to restore the generated rota. Reset can also be undone.
+
+Manual edits apply to the current rota and its printout. **Generate again** creates a new rota from steps 1–5 and replaces those edits. Changing a generation setting clears the displayed rota. Reloading the page clears the rota and settings; print or save a PDF to keep a copy.
+
 What took days now takes about a minute.
 
 ## Under the hood
 
 - A single self-contained HTML file — no installs, no server, no dependencies. It runs entirely in the browser and works offline; the hosted copy is just this repository served by GitHub Pages.
 - The scheduler is a backtracking search with pruning (restricted workers are checked against their remaining eligible slots, and every partial assignment is checked for feasibility) plus randomised restarts, so it both *proves* impossibility quickly and produces varied rotas on repeated runs.
-- Run the scheduling regression checks with `node --test test/rota.test.cjs` (Node.js required for tests only). They cover fixed assignments, repeated generation, exact totals, rest before and after fixed shifts, time off, deliveries, date changes, the 1–28 day range, and Arooj's handover times.
+- Run the scheduling and editing regression checks with `node --test test/rota.test.cjs` (Node.js required for tests only). They cover fixed assignments, repeated generation, exact totals, rest before and after fixed shifts, time off, deliveries, date changes, the 1–28 day range, manual reassignment and swaps, warning detection, and Arooj's handover times.
+- Optional browser checks: with Playwright and Google Chrome installed, run `node --test test/rota.browser.test.cjs`. Set `ROTA_PLAYWRIGHT_MODULE` to the Playwright module's path if it is not installed locally. These checks cover actual drag-and-drop, the editor, keyboard and touch controls, undo/reset, regenerated output, and print styles. The app itself still needs no dependencies.
 
 ---
 

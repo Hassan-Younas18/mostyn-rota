@@ -172,7 +172,7 @@
   .btn-secondary:hover{background:var(--paper);}
   .error{color:var(--bad); font-size:.82rem; font-weight:600; margin-top:12px; white-space:pre-line;}
 
-  .toolbar{margin:2px 0 16px; display:none; gap:10px;}
+  .toolbar{margin:2px 0 16px; display:none; gap:10px; flex-wrap:wrap;}
 
   /* ============ rota table ============ */
   #output{margin-top:6px;}
@@ -199,6 +199,44 @@
   td.hrs{color:var(--brand); font-weight:700;}
   tr.weekend td.date, tr.weekend td.day{background:#f6f2e6;}
 
+  /* editing a generated rota */
+  [hidden]{display:none !important;}
+  .edit-help{margin:0 0 14px; padding:12px 16px; border:1px solid var(--line); border-radius:10px; background:#fff;}
+  .edit-help p{font-size:.8rem;}
+  .edit-help .hint{font-size:.74rem; margin-top:5px;}
+  .edit-status{color:var(--night); font-weight:600; min-height:1.45em; margin-top:7px;}
+  table.rota td.shift-name{padding:0;}
+  .shift-button{
+    display:block; width:100%; min-height:44px; padding:6px 7px; border:0;
+    background:transparent; color:inherit; font:inherit; font-weight:800; cursor:grab;
+  }
+  .shift-button:hover{background:rgba(255,255,255,.4);}
+  .shift-button:active{cursor:grabbing;}
+  .shift-button:focus-visible{outline-offset:-3px;}
+  .shift-button.is-dragging{opacity:.45;}
+  table.rota td.drop-target{box-shadow:inset 0 3px var(--night), inset 0 -3px var(--night);}
+  .edited-badge, .warning-badge{display:block; font-size:.58rem; font-weight:700;}
+  .edited-badge{color:var(--night-deep);}
+  .warning-badge, .target-difference{color:var(--bad);}
+  .rota-warnings{padding:12px 16px; margin-bottom:14px; border:1px solid #eec3c0; border-radius:10px; background:var(--badbg); font-size:.78rem;}
+  .rota-warnings h3{font-size:.86rem; color:var(--bad);}
+  .warning-list{padding-left:20px; margin-top:6px; max-height:220px; overflow:auto;}
+  .warning-list li + li{margin-top:4px;}
+  .target-difference{display:block; font-weight:600;}
+  .shift-editor{
+    width:min(520px,calc(100% - 32px)); max-height:calc(100% - 32px); margin:auto;
+    padding:24px; border:1px solid var(--line-strong); border-radius:14px;
+    color:var(--ink); box-shadow:0 16px 60px rgba(0,0,0,.25); overflow:auto;
+  }
+  .shift-editor::backdrop{background:rgba(34,43,77,.5);}
+  .shift-editor h2{font-size:1.1rem; margin-bottom:6px;}
+  .shift-editor .editor-context{font-size:.85rem; color:var(--muted); margin-bottom:18px;}
+  .shift-editor select{width:100%; margin-bottom:14px;}
+  .shift-editor .editor-actions{display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; margin-top:18px;}
+  .shift-editor .rota-warnings{margin:8px 0 0;}
+  .shift-editor .warning-list{max-height:160px;}
+  .preview-ok{font-size:.8rem; color:var(--ok);}
+
   /* summary tiles */
   .tiles{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; margin-top:18px;}
   .tile{
@@ -217,13 +255,16 @@
   /* ============ print ============ */
   @media print{
     body{background:#fff;}
-    .hero, .card, .toolbar, footer{display:none !important;}
+    .hero, .card, .toolbar, .edit-help, .shift-editor, footer{display:none !important;}
     main{padding:0; max-width:none;}
     .rotawrap{overflow:visible; border:none; border-radius:0;}
     .rota-title{border-radius:0; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
     table.rota th, table.rota td{border:1px solid #000;}
     table.rota{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
     .tiles{display:none;}
+    .shift-button{min-height:0; cursor:default;}
+    .rota-warnings{font-size:8pt; break-inside:avoid;}
+    .warning-list{max-height:none; overflow:visible;}
     @page{size:A4 landscape; margin:8mm;}
   }
 </style>
@@ -306,11 +347,45 @@
 <div class="toolbar" id="toolbar">
   <button class="btn btn-secondary" onclick="window.print()">&#128424; Print / save as PDF</button>
   <button class="btn btn-secondary" id="btnShuffle">&#8635; Generate again (different mix)</button>
+  <button type="button" class="btn btn-secondary" id="btnUndo" disabled>Undo last change</button>
+  <button type="button" class="btn btn-secondary" id="btnResetEdits" disabled>Reset edits</button>
 </div>
 
+<div class="edit-help" id="editHelp" hidden>
+  <p><b>Make it your own:</b> click or tap a name to change who works that shift. Drag a name onto another shift to swap the two people.</p>
+  <p class="hint">You can also swap shifts in the edit window using a keyboard or phone. Changes are allowed even when they break a rule; review the warnings before sharing.</p>
+  <p class="hint">Edits apply to this rota and its printout. <b>Generate again</b> uses steps 1–5 and replaces your edits. Changing those settings clears the generated rota.</p>
+  <p class="edit-status" id="editStatus" role="status" aria-live="polite"></p>
+</div>
+<div class="rota-warnings" id="rotaWarnings" hidden aria-labelledby="warningTitle">
+  <h3 id="warningTitle"></h3>
+  <ul class="warning-list" id="warningList"></ul>
+</div>
 <div id="output"></div>
 
 </main>
+
+<dialog class="shift-editor" id="shiftEditor" aria-labelledby="editorTitle" aria-describedby="editorContext">
+  <form id="shiftEditForm">
+    <h2 id="editorTitle">Edit shift</h2>
+    <p class="editor-context" id="editorContext"></p>
+    <label for="editAction">Change this shift</label>
+    <select id="editAction"><option value="assign">Assign a person</option><option value="swap">Swap with another shift</option></select>
+    <div id="assignField">
+      <label for="editPerson">Who should work this shift?</label>
+      <select id="editPerson"></select>
+    </div>
+    <div id="swapField" hidden>
+      <label for="editSwap">Shift to swap with</label>
+      <select id="editSwap"></select>
+    </div>
+    <div id="editPreview" aria-live="polite"></div>
+    <div class="editor-actions">
+      <button type="button" class="btn btn-secondary" id="btnCancelEdit">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="btnSaveEdit">Save change</button>
+    </div>
+  </form>
+</dialog>
 
 <footer>
   Rules applied automatically: one shift per person per day &middot; Arooj afternoons only (finishing 21:30) &middot;
@@ -352,6 +427,10 @@ const delivery = new Map();
 // fixed = Map: calendar date (YYYY-MM-DD) -> Map of shift -> person.
 // Calendar dates keep assignments on the same date when the rota range changes.
 const fixed = new Map();
+// Manual changes belong to the currently generated rota, not the generation settings.
+let currentRota = null;
+let editingSlot = null;
+let draggedSlot = null;
 
 const isBlocked = (p,d,s) => { const set = blocked[p].get(d); return set ? set.has(s) : false; };
 const setBlocked = (p,d,s,on) => {
@@ -406,13 +485,21 @@ function initUI(){
   document.querySelector("main").addEventListener("input", invalidateOutput);
   document.querySelector("main").addEventListener("change", invalidateOutput);
   $("empInputs").addEventListener("click", ev=>{ if (ev.target.closest(".bump")) invalidateOutput(); });
+  initRotaEditing();
   updateTotal();
   buildRangeUI();
 }
 
 function invalidateOutput(){
+  if ($("shiftEditor").open) $("shiftEditor").close();
+  currentRota = null;
+  editingSlot = null;
+  draggedSlot = null;
   $("output").innerHTML = "";
   $("toolbar").style.display = "none";
+  $("editHelp").hidden = true;
+  $("rotaWarnings").hidden = true;
+  $("editStatus").textContent = "";
   $("errBox").textContent = "";
 }
 
@@ -819,6 +906,208 @@ function generate(days, counts, blk, locks = Array.from({length:days}, ()=>[-1,-
   return null;
 }
 
+/* ================= editing a generated rota ================= */
+const copyGrid = grid => grid.map(row=>row.slice());
+const sameGrid = (a,b) => a.every((row,d)=>row.every((p,s)=>p===b[d][s]));
+const validSlot = (grid,slot) => Array.isArray(slot) && slot.length===2 &&
+  Number.isInteger(slot[0]) && Number.isInteger(slot[1]) &&
+  slot[0]>=0 && slot[0]<grid.length && slot[1]>=M && slot[1]<=N;
+
+// A swap is atomic: both destinations change together, and neither shift is left empty.
+function editGrid(grid, source, change){
+  if (!validSlot(grid,source)) return null;
+  const next = copyGrid(grid), [d,s] = source;
+  if (change.swap){
+    if (!validSlot(grid,change.swap)) return null;
+    const [otherDay,otherShift] = change.swap;
+    [next[d][s],next[otherDay][otherShift]] = [grid[otherDay][otherShift],grid[d][s]];
+  } else {
+    if (!Number.isInteger(change.person) || change.person<0 || change.person>=EMPLOYEES.length) return null;
+    next[d][s] = change.person;
+  }
+  return next;
+}
+
+// Review the entire edited rota, including both sides of a swap and both neighbouring days.
+// Warnings never prevent a manual edit; generation still enforces all its original rules.
+function rotaWarnings(grid, counts, blk, start, locks){
+  const warnings = [], assignments = EMPLOYEES.map(()=>[]);
+  const add = (message,slots) => warnings.push({message,slots});
+  for (let d=0; d<grid.length; d++){
+    const date = fmtDate(dayDate(start,d));
+    const byPerson = new Map();
+    for (const s of [M,A,N]){
+      const p = grid[d][s], e = EMPLOYEES[p], slot = [d,s];
+      const label = `${nice(e.name)}'s ${SHIFTNAMES[s]} on ${date}`;
+      assignments[p].push(slot);
+      if (!byPerson.has(p)) byPerson.set(p,[]);
+      byPerson.get(p).push(slot);
+      if (!e.allowed.includes(s)) add(`${label} is not an allowed shift for them.`,[slot]);
+      if (blk[p].get(d)?.has(s) || e.allowed.every(allowed=>blk[p].get(d)?.has(allowed)))
+        add(`${label} conflicts with time off, a non-working weekday or a delivery.`,[slot]);
+      if (s===N && d+1<grid.length && e.allowed.every(next=>blk[p].get(d+1)?.has(next)))
+        add(`${label} runs into their day off or delivery on ${fmtDate(dayDate(start,d+1))}.`,[slot]);
+      if (d>0){
+        const previous = grid[d-1].flatMap((person,shift)=>person===p && shift>s ? [[d-1,shift]] : []);
+        if (previous.length) add(`${label} is too early after their shift the day before. Allow a day off or choose the same or a later shift.`,[...previous,slot]);
+      }
+      if (locks[d][s]>=0 && locks[d][s]!==p)
+        add(`${nice(SHIFTNAMES[s])} on ${date} was fixed to ${nice(EMPLOYEES[locks[d][s]].name)} in step 5; it is now assigned to ${nice(e.name)}.`,[slot]);
+    }
+    for (const [p,slots] of byPerson) if (slots.length>1)
+      add(`${nice(EMPLOYEES[p].name)} has ${slots.length} shifts on ${date}. The rota rule is one shift per person per day.`,slots);
+  }
+  assignments.forEach((slots,p)=>{
+    if (slots.length!==counts[p])
+      add(`${nice(EMPLOYEES[p].name)} now has ${slots.length} shift${slots.length===1?"":"s"}; their target in step 2 is ${counts[p]}.`,slots);
+  });
+  return warnings;
+}
+
+const escapeHTML = text => String(text).replace(/[&<>"']/g, char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+const warningItems = warnings => warnings.map(w=>`<li>${escapeHTML(w.message)}</li>`).join("");
+
+function refreshRota(message=""){
+  if (!currentRota) return;
+  const {grid,days,start,locks,baseline,counts,blk,history} = currentRota;
+  const warnings = rotaWarnings(grid,counts,blk,start,locks);
+  render(grid,days,start,locks,baseline,counts,warnings);
+  $("editHelp").hidden = false;
+  $("btnUndo").disabled = !history.length;
+  $("btnResetEdits").disabled = sameGrid(grid,baseline);
+  $("rotaWarnings").hidden = !warnings.length;
+  $("warningTitle").textContent = `${warnings.length} warning${warnings.length===1?"":"s"} — review before sharing`;
+  $("warningList").innerHTML = warningItems(warnings);
+  $("editStatus").textContent = `${message}${message?" ":""}${warnings.length ? `${warnings.length} warning${warnings.length===1?"":"s"} to review below.` : "All rota rules and shift targets are satisfied."}`;
+}
+
+function commitRotaEdit(next, message){
+  if (!currentRota || !next || sameGrid(next,currentRota.grid)) return false;
+  currentRota.history.push(currentRota.grid);
+  currentRota.grid = next;
+  refreshRota(message);
+  return true;
+}
+
+function focusShift(slot){
+  if (slot) $("output").querySelector(`.shift-button[data-d="${slot[0]}"][data-s="${slot[1]}"]`)?.focus({preventScroll:true});
+}
+
+function slotLabel(slot){
+  const [d,s] = slot;
+  return `${nice(SHIFTNAMES[s])}, ${fmtDate(dayDate(currentRota.start,d))} — ${nice(EMPLOYEES[currentRota.grid[d][s]].name)}`;
+}
+
+function openShiftEditor(slot){
+  if (!currentRota || !validSlot(currentRota.grid,slot)) return;
+  editingSlot = slot;
+  $("editorContext").textContent = slotLabel(slot);
+  $("editAction").value = "assign";
+  $("editPerson").innerHTML = EMPLOYEES.map((e,p)=>`<option value="${p}">${escapeHTML(nice(e.name))} — ${escapeHTML(e.note)}</option>`).join("");
+  $("editPerson").value = String(currentRota.grid[slot[0]][slot[1]]);
+  let options = `<option value="">Choose a shift…</option>`;
+  for (let d=0; d<currentRota.days; d++) for (const s of [M,A,N]){
+    if (d===slot[0] && s===slot[1]) continue;
+    options += `<option value="${d},${s}">${escapeHTML(slotLabel([d,s]))}</option>`;
+  }
+  $("editSwap").innerHTML = options;
+  updateEditPreview();
+  $("shiftEditor").showModal();
+  $("editPerson").focus();
+}
+
+function proposedEdit(){
+  if (!currentRota || !editingSlot) return null;
+  if ($("editAction").value==="swap"){
+    const value = $("editSwap").value;
+    return value ? editGrid(currentRota.grid,editingSlot,{swap:value.split(",").map(Number)}) : null;
+  }
+  return editGrid(currentRota.grid,editingSlot,{person:Number($("editPerson").value)});
+}
+
+function updateEditPreview(){
+  const swap = $("editAction").value==="swap";
+  $("assignField").hidden = swap;
+  $("swapField").hidden = !swap;
+  const next = proposedEdit();
+  const changed = next && !sameGrid(next,currentRota.grid);
+  $("btnSaveEdit").disabled = !changed;
+  if (!changed){
+    $("editPreview").innerHTML = `<p class="hint">Choose a different person or a shift to swap with.</p>`;
+    return;
+  }
+  const {counts,blk,start,locks} = currentRota;
+  const warnings = rotaWarnings(next,counts,blk,start,locks);
+  $("editPreview").innerHTML = warnings.length
+    ? `<div class="rota-warnings"><h3>After this change: ${warnings.length} warning${warnings.length===1?"":"s"}</h3><p>You can still save this change.</p><ul class="warning-list">${warningItems(warnings)}</ul></div>`
+    : `<p class="preview-ok">All rota rules and shift targets will still be satisfied.</p>`;
+}
+
+function clearDrag(){
+  draggedSlot = null;
+  $("output").querySelectorAll(".drop-target, .is-dragging").forEach(el=>el.classList.remove("drop-target","is-dragging"));
+}
+
+function initRotaEditing(){
+  $("btnUndo").addEventListener("click",()=>{
+    if (!currentRota?.history.length) return;
+    currentRota.grid = currentRota.history.pop();
+    refreshRota("Last change undone.");
+  });
+  $("btnResetEdits").addEventListener("click",()=>{
+    if (currentRota) commitRotaEdit(copyGrid(currentRota.baseline),"Original generated rota restored. You can undo this reset.");
+  });
+  for (const id of ["editAction","editPerson","editSwap"]) $(id).addEventListener("change",updateEditPreview);
+  $("btnCancelEdit").addEventListener("click",()=>$("shiftEditor").close());
+  $("shiftEditor").addEventListener("close",()=>{
+    focusShift(editingSlot);
+    editingSlot = null;
+  });
+  $("shiftEditForm").addEventListener("submit",ev=>{
+    ev.preventDefault();
+    const next = proposedEdit();
+    const message = $("editAction").value==="swap" ? "Shifts swapped." : "Shift assignment updated.";
+    $("shiftEditor").close();
+    commitRotaEdit(next,message);
+    focusShift(editingSlot);
+  });
+  const output = $("output");
+  output.addEventListener("click",ev=>{
+    const button = ev.target.closest(".shift-button");
+    if (button) openShiftEditor([+button.dataset.d,+button.dataset.s]);
+  });
+  output.addEventListener("dragstart",ev=>{
+    const button = ev.target.closest(".shift-button");
+    if (!button || !currentRota || !ev.dataTransfer) return;
+    draggedSlot = [+button.dataset.d,+button.dataset.s];
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain",slotLabel(draggedSlot));
+    button.classList.add("is-dragging");
+  });
+  output.addEventListener("dragover",ev=>{
+    const cell = ev.target.closest("td[data-d][data-s]");
+    if (!draggedSlot || !cell) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "move";
+    output.querySelectorAll(".drop-target").forEach(el=>el.classList.remove("drop-target"));
+    output.querySelectorAll(`td[data-d="${cell.dataset.d}"][data-s="${cell.dataset.s}"]`).forEach(el=>el.classList.add("drop-target"));
+  });
+  output.addEventListener("dragleave",ev=>{
+    if (!output.contains(ev.relatedTarget)) output.querySelectorAll(".drop-target").forEach(el=>el.classList.remove("drop-target"));
+  });
+  output.addEventListener("drop",ev=>{
+    const cell = ev.target.closest("td[data-d][data-s]");
+    if (!draggedSlot || !cell || !currentRota) return;
+    ev.preventDefault();
+    const target = [+cell.dataset.d,+cell.dataset.s];
+    const next = editGrid(currentRota.grid,draggedSlot,{swap:target});
+    clearDrag();
+    if (!commitRotaEdit(next,"Shifts swapped.")) $("editStatus").textContent = "No change: those shifts already have the same person.";
+    focusShift(target);
+  });
+  output.addEventListener("dragend",clearDrag);
+}
+
 /* ================= rendering ================= */
 const DAYNAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const SHIFTNAMES = ["morning","afternoon","night"];
@@ -837,7 +1126,8 @@ function shiftTimes(grid, d){
   };
 }
 
-function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,-1])){
+function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,-1]), baseline=grid, counts=null, warnings=[]){
+  const warningSlots = new Set(warnings.flatMap(w=>w.slots.map(([d,s])=>`${d},${s}`)));
   const end = new Date(start); end.setDate(end.getDate()+days-1);
   let h = `<div class="rota-title">MOSTYN BROADWAY &nbsp;${fmtDate(start)} TO ${fmtDate(end)}</div>`;
   h += `<div class="rotawrap"><table class="rota"><thead><tr>
@@ -862,8 +1152,13 @@ function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,
     for (const [s, [p, tm]] of cells.entries()){
       hours[p] += tm.hrs; shiftCount[p]++;
       const badge = locks[d][s]===p ? `<span class="fixed-badge">Fixed</span>` : "";
-      h += `<td class="name" style="background:${EMPLOYEES[p].color}">${EMPLOYEES[p].name}${badge}</td>` +
-           `<td>${tm.from}</td><td>${tm.to}</td><td class="hrs">${tm.hrs.toFixed(2)}</td>`;
+      const edited = baseline[d][s]!==p ? `<span class="edited-badge">Edited</span>` : "";
+      const warning = warningSlots.has(`${d},${s}`) ? `<span class="warning-badge">! Review</span>` : "";
+      const slot = `data-d="${d}" data-s="${s}"`;
+      const label = `Edit ${SHIFTNAMES[s]} on ${fmtDate(dt)}, ${nice(EMPLOYEES[p].name)}${warning?", has warnings":""}`;
+      h += `<td class="name shift-name" ${slot} style="background:${EMPLOYEES[p].color}">` +
+           `<button type="button" class="shift-button" ${slot} draggable="true" aria-label="${escapeHTML(label)}" aria-haspopup="dialog" title="Click to edit, or drag onto another shift to swap">${EMPLOYEES[p].name}${badge}${edited}${warning}</button></td>` +
+           `<td ${slot}>${tm.from}</td><td ${slot}>${tm.to}</td><td class="hrs" ${slot}>${tm.hrs.toFixed(2)}</td>`;
     }
     const who = [...(delivery.get(d) || [])].sort((a,b)=>a-b);
     if (who.length){
@@ -883,7 +1178,8 @@ function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,
     h += `<div class="tile"><span class="avatar" style="background:${e.color}">${e.ini}</span>` +
          `<span><span class="tname">${e.name}</span><br>` +
          `<span class="tstat">${shiftCount[i]} shift${shiftCount[i]===1?"":"s"}` +
-         `${dc ? ` + ${dc} deliver${dc===1?"y":"ies"}` : ""} · ${hours[i].toFixed(1)} hours</span></span></div>`;
+         `${dc ? ` + ${dc} deliver${dc===1?"y":"ies"}` : ""} · ${hours[i].toFixed(1)} hours</span>` +
+         `${counts && counts[i]!==shiftCount[i] ? `<span class="tstat target-difference">Target: ${counts[i]} shifts (${shiftCount[i]>counts[i]?"+":""}${shiftCount[i]-counts[i]})</span>` : ""}</span></div>`;
   });
   h += `</div>`;
   $("output").innerHTML = h;
@@ -911,7 +1207,8 @@ function run(){
       "Try changing a fixed shift, moving a shift or two between people, or unblocking a shift.";
     return;
   }
-  render(grid, days, start, locks);
+  currentRota = {grid,baseline:copyGrid(grid),days,start,counts,blk,locks,history:[]};
+  refreshRota();
 }
 
 initUI();

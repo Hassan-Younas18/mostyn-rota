@@ -9,7 +9,7 @@ function loadApp(){
   const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/initUI\(\);\s*$/, '');
   const context = vm.createContext({});
   vm.runInContext(source, context);
-  return vm.runInContext('({EMPLOYEES, M, A, N, solve, generate, validate, validateFixed, effectiveBlocks, blocked, delivery, fixed, fixedGrid, dateKey, dayDate, shiftTimes})', context);
+  return vm.runInContext('({EMPLOYEES, M, A, N, solve, generate, validate, validateFixed, effectiveBlocks, blocked, delivery, fixed, fixedGrid, dateKey, dayDate, shiftTimes, editGrid, rotaWarnings})', context);
 }
 
 function setup(days=14, start='2026-10-19'){
@@ -166,4 +166,114 @@ test('fixing Arooj preserves the 21:30 night handover',()=>{
   assert.equal(times.afternoon.hrs,7.5);
   assert.equal(times.night.from,'21:30');
   assert.equal(times.night.hrs,8.5);
+});
+
+function review(f,grid){
+  return f.app.rotaWarnings(grid,f.counts,f.app.effectiveBlocks(f.days,f.date),f.date,f.locks);
+}
+
+test('generated rotas have no manual-edit warnings',()=>{
+  const f=setup(), grid=solve(f);
+  assert.equal(review(f,grid).length,0);
+});
+
+test('reassignment allows a new person, reports both target differences and leaves the original untouched',()=>{
+  const f=setup(), grid=solve(f), original=JSON.stringify(grid);
+  const previous=grid[2][0], replacement=f.people.ZAHEER;
+  const next=f.app.editGrid(grid,[2,0],{person:replacement});
+  assert.equal(next[2][0],replacement);
+  assert.equal(JSON.stringify(grid),original);
+  const warnings=review(f,next).map(w=>w.message).join('\n');
+  assert.match(warnings,/Zaheer now has 1 shift; their target in step 2 is 0/);
+  assert.ok(warnings.toLowerCase().includes(f.app.EMPLOYEES[previous].name.toLowerCase()+' now has'));
+});
+
+test('swapping shifts changes both destinations atomically and preserves counts',()=>{
+  const f=setup(), grid=solve(f), original=JSON.stringify(grid);
+  const morning=grid.findIndex(row=>f.app.EMPLOYEES[row[0]].allowed.length===1);
+  const night=(morning+1)%f.days;
+  const next=f.app.editGrid(grid,[morning,0],{swap:[night,2]});
+  assert.equal(next[morning][0],grid[night][2]);
+  assert.equal(next[night][2],grid[morning][0]);
+  assert.equal(JSON.stringify(grid),original);
+  assert.ok(!review(f,next).some(w=>w.message.includes('target in step 2')));
+  assert.ok(review(f,next).some(w=>w.message.includes('not an allowed shift')));
+});
+
+test('invalid edit coordinates and people do not change the rota',()=>{
+  const f=setup(), grid=solve(f), original=JSON.stringify(grid);
+  for (const slot of [[-1,0],[14,0],[0,3],[0.5,0],null])
+    assert.equal(f.app.editGrid(grid,slot,{person:0}),null);
+  for (const person of [-1,10,0.5,NaN])
+    assert.equal(f.app.editGrid(grid,[0,0],{person}),null);
+  assert.equal(f.app.editGrid(grid,[0,0],{swap:[14,0]}),null);
+  assert.equal(JSON.stringify(grid),original);
+});
+
+test('dropping on the same shift is a no-op',()=>{
+  const f=setup(), grid=solve(f);
+  assert.equal(JSON.stringify(f.app.editGrid(grid,[0,0],{swap:[0,0]})),JSON.stringify(grid));
+});
+
+const manualConflicts=[
+  ['allowed shift',f=>[0,0,f.people.JERRY],/not an allowed shift/],
+  ['time off',f=>{f.app.blocked[f.people.ZAHEER].set(3,new Set([1]));return [3,1,f.people.ZAHEER];},/conflicts with time off/],
+  ['non-working weekday',f=>[6,0,f.people['RIDA FATIMA']],/non-working weekday/],
+  ['delivery',f=>[1,1,f.people.HASSAN],/conflicts with time off, a non-working weekday or a delivery/],
+  ['overnight delivery',f=>[0,2,f.people.HASSAN],/runs into their day off or delivery/],
+  ['overnight time off',f=>{f.app.blocked[f.people.ZAHEER].set(3,new Set([0,1,2]));return [2,2,f.people.ZAHEER];},/runs into their day off/],
+];
+for (const [name,change,pattern] of manualConflicts) test(`manual edits allow but warn about ${name} conflicts`,()=>{
+  const f=setup(), grid=solve(f), [d,s,p]=change(f);
+  const next=f.app.editGrid(grid,[d,s],{person:p});
+  assert.equal(next[d][s],p,'Manual changes must be allowed');
+  assert.match(review(f,next).map(w=>w.message).join('\n'),pattern);
+});
+
+test('manual edits warn about multiple shifts on the same day',()=>{
+  const f=setup(), grid=solve(f);
+  const next=f.app.editGrid(grid,[2,0],{person:grid[2][1]});
+  const warning=review(f,next).find(w=>w.message.includes('2 shifts on'));
+  assert.ok(warning);
+  assert.equal(JSON.stringify(warning.slots),JSON.stringify([[2,0],[2,1]]));
+});
+
+test('rest warnings cover both neighbouring days and highlight both shifts',()=>{
+  const f=setup(), grid=solve(f), p=f.people.ZAHEER;
+  let next=f.app.editGrid(grid,[2,2],{person:p});
+  next=f.app.editGrid(next,[3,1],{person:p});
+  next=f.app.editGrid(next,[4,0],{person:p});
+  const warnings=review(f,next).filter(w=>w.message.includes('too early'));
+  assert.equal(warnings.length,2);
+  assert.equal(JSON.stringify(warnings[0].slots),JSON.stringify([[2,2],[3,1]]));
+  assert.equal(JSON.stringify(warnings[1].slots),JSON.stringify([[3,1],[4,0]]));
+});
+
+test('overriding a fixed shift warns without altering generation settings',()=>{
+  const f=setup(), grid=solve(f);
+  f.locks[2][0]=grid[2][0];
+  const next=f.app.editGrid(grid,[2,0],{person:f.people.ZAHEER});
+  assert.ok(review(f,next).some(w=>w.message.includes('was fixed to')));
+  assert.equal(f.locks[2][0],grid[2][0]);
+  assert.ok(!review(f,grid).some(w=>w.message.includes('was fixed to')));
+});
+
+test('moving Arooj updates handover hours at both ends of the swap',()=>{
+  const f=setup(), grid=solve(f);
+  const aroojDay=grid.findIndex(row=>row[1]===f.people.AROOJ);
+  const otherDay=grid.findIndex(row=>row[1]!==f.people.AROOJ);
+  const next=f.app.editGrid(grid,[aroojDay,1],{swap:[otherDay,1]});
+  assert.equal(f.app.shiftTimes(next,aroojDay).afternoon.hrs,8);
+  assert.equal(f.app.shiftTimes(next,aroojDay).night.from,'22:00');
+  assert.equal(f.app.shiftTimes(next,otherDay).afternoon.hrs,7.5);
+  assert.equal(f.app.shiftTimes(next,otherDay).night.from,'21:30');
+  assert.equal(f.app.shiftTimes(next,otherDay).night.hrs,8.5);
+});
+
+for (const days of [1,28]) test(`editing the final shift of a ${days}-day rota is supported`,()=>{
+  const f=setup(days,'2026-10-21');
+  const grid=Array.from({length:days},()=>[f.people.ELAINE,f.people.WES,f.people.JERRY]);
+  const next=f.app.editGrid(grid,[days-1,2],{person:f.people.ZAHEER});
+  assert.equal(next[days-1][2],f.people.ZAHEER);
+  assert.ok(review(f,next).length>0);
 });
