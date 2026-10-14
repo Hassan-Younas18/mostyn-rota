@@ -37,7 +37,7 @@ The output looks exactly like the rota everyone is used to — same columns incl
 
 - **Click or tap a name** in the generated rota, choose a person, and press **Save change**. The edit window previews any warnings before saving.
 - **Drag a name onto another shift** to swap the two people. Both shifts stay filled. On a phone or with a keyboard, open a shift and choose **Swap with another shift** instead.
-- **Manual changes are allowed even when they break a rule.** Warnings flag allowed shift types, time off, non-working weekdays, deliveries, nights running into days off, rest, multiple shifts on one day, differences from each person's target, and changes to fixed assignments. Warnings also appear when printing.
+- **Manual changes are allowed even when they break a rule.** Warnings flag allowed shift types, time off, non-working weekdays, deliveries, nights running into days off, rest, multiple shifts on one day, differences from each person's target, and changes to fixed assignments. Warnings and **! Review** markers appear only in the app; they are hidden when printing or saving as PDF.
 - **Hours, shift totals and Arooj's handover times update immediately.** Changed assignments are labelled **Edited**; the original targets and fixed-shift settings remain in steps 2 and 5.
 - Use **Undo last change** to reverse edits, or **Reset edits** to restore the generated rota. Reset can also be undone.
 
