@@ -205,14 +205,15 @@
   .edit-help p{font-size:.8rem;}
   .edit-help .hint{font-size:.74rem; margin-top:5px;}
   .edit-status{color:var(--night); font-weight:600; min-height:1.45em; margin-top:7px;}
-  table.rota td.shift-name{padding:0;}
-  .shift-button{
+  table.rota td.shift-name, table.rota td.delivery-name{padding:0;}
+  .shift-button, .delivery-button{
     display:block; width:100%; min-height:44px; padding:6px 7px; border:0;
     background:transparent; color:inherit; font:inherit; font-weight:800; cursor:grab;
   }
-  .shift-button:hover{background:rgba(255,255,255,.4);}
+  .shift-button:hover, .delivery-button:hover{background:rgba(255,255,255,.4);}
+  .delivery-button{cursor:pointer;}
   .shift-button:active{cursor:grabbing;}
-  .shift-button:focus-visible{outline-offset:-3px;}
+  .shift-button:focus-visible, .delivery-button:focus-visible{outline-offset:-3px;}
   .shift-button.is-dragging{opacity:.45;}
   table.rota td.drop-target{box-shadow:inset 0 3px var(--night), inset 0 -3px var(--night);}
   .edited-badge, .warning-badge{display:block; font-size:.58rem; font-weight:700;}
@@ -236,6 +237,10 @@
   .shift-editor .rota-warnings{margin:8px 0 0;}
   .shift-editor .warning-list{max-height:160px;}
   .preview-ok{font-size:.8rem; color:var(--ok);}
+  .delivery-options{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; margin:14px 0;}
+  .delivery-option{display:flex; align-items:center; gap:9px; min-height:44px; margin:0; padding:9px 11px; border:1px solid var(--line); border-radius:8px; color:var(--ink); font-size:.82rem; cursor:pointer;}
+  .delivery-option:has(input:checked){background:#edf0fa; border-color:var(--night);}
+  .delivery-option input{width:18px; height:18px; flex:none; accent-color:var(--night);}
 
   /* summary tiles */
   .tiles{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; margin-top:18px;}
@@ -255,14 +260,14 @@
   /* ============ print ============ */
   @media print{
     body{background:#fff;}
-    .hero, .card, .toolbar, .edit-help, .shift-editor, .fixed-badge, .edited-badge, .warning-badge, .rota-warnings, footer{display:none !important;}
+    .hero, .card, .toolbar, .edit-help, .shift-editor, .fixed-badge, .edited-badge, .warning-badge, .rota-warnings, .delivery-placeholder, footer{display:none !important;}
     main{padding:0; max-width:none;}
     .rotawrap{overflow:visible; border:none; border-radius:0;}
     .rota-title{border-radius:0; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
     table.rota th, table.rota td{border:1px solid #000;}
     table.rota{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
     .tiles{display:none;}
-    .shift-button{min-height:0; cursor:default;}
+    .shift-button, .delivery-button{min-height:0; cursor:default;}
     @page{size:A4 landscape; margin:8mm;}
   }
 </style>
@@ -351,6 +356,7 @@
 
 <div class="edit-help" id="editHelp" hidden>
   <p><b>Make it your own:</b> click or tap a name to change who works that shift. Drag a name onto another shift to swap the two people.</p>
+  <p class="hint">Click the names in a Tuesday's <b>Delivery</b> column to choose one or more delivery people.</p>
   <p class="hint">You can also swap shifts in the edit window using a keyboard or phone. Changes are allowed even when they break a rule; review the warnings before sharing.</p>
   <p class="hint">Edits apply to this rota and its printout. <b>Generate again</b> uses steps 1–5 and replaces your edits. Changing those settings clears the generated rota.</p>
   <p class="edit-status" id="editStatus" role="status" aria-live="polite"></p>
@@ -381,6 +387,20 @@
     <div class="editor-actions">
       <button type="button" class="btn btn-secondary" id="btnCancelEdit">Cancel</button>
       <button type="submit" class="btn btn-primary" id="btnSaveEdit">Save change</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="shift-editor" id="deliveryEditor" aria-labelledby="deliveryEditorTitle" aria-describedby="deliveryEditorContext deliveryEditorHelp">
+  <form id="deliveryEditForm">
+    <h2 id="deliveryEditorTitle">Edit delivery</h2>
+    <p class="editor-context" id="deliveryEditorContext"></p>
+    <p class="hint" id="deliveryEditorHelp">Select everyone doing the delivery. Each person gets 4 delivery hours. Conflicts will be shown before you save.</p>
+    <div class="delivery-options" id="deliveryOptions" role="group" aria-label="Delivery people"></div>
+    <div id="deliveryPreview" aria-live="polite"></div>
+    <div class="editor-actions">
+      <button type="button" class="btn btn-secondary" id="btnCancelDelivery">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="btnSaveDelivery">Save delivery</button>
     </div>
   </form>
 </dialog>
@@ -428,6 +448,7 @@ const fixed = new Map();
 // Manual changes belong to the currently generated rota, not the generation settings.
 let currentRota = null;
 let editingSlot = null;
+let editingDeliveryDay = null;
 let draggedSlot = null;
 
 const isBlocked = (p,d,s) => { const set = blocked[p].get(d); return set ? set.has(s) : false; };
@@ -490,8 +511,10 @@ function initUI(){
 
 function invalidateOutput(){
   if ($("shiftEditor").open) $("shiftEditor").close();
+  if ($("deliveryEditor").open) $("deliveryEditor").close();
   currentRota = null;
   editingSlot = null;
+  editingDeliveryDay = null;
   draggedSlot = null;
   $("output").innerHTML = "";
   $("toolbar").style.display = "none";
@@ -694,11 +717,11 @@ function updateTotal(){
 // Everything that stops someone working, as blocks for the solver: time off from step 4,
 // weekdays they never work, and their delivery Tuesdays. The last two count as a whole
 // day off, which also rules out the night shift before it (that runs past midnight into it).
-function effectiveBlocks(days, start){
+function effectiveBlocks(days, start, deliveries=delivery){
   return EMPLOYEES.map((e,p)=>{
     const map = new Map();
     for (let d=0; d<days; d++){
-      const wholeDay = (e.noDays||[]).includes(dayDate(start,d).getDay()) || !!delivery.get(d)?.has(p);
+      const wholeDay = (e.noDays||[]).includes(dayDate(start,d).getDay()) || !!deliveries.get(d)?.has(p);
       const set = new Set(wholeDay ? e.allowed : (blocked[p].get(d) || []));
       if (set.size) map.set(d,set);
     }
@@ -907,6 +930,9 @@ function generate(days, counts, blk, locks = Array.from({length:days}, ()=>[-1,-
 /* ================= editing a generated rota ================= */
 const copyGrid = grid => grid.map(row=>row.slice());
 const sameGrid = (a,b) => a.every((row,d)=>row.every((p,s)=>p===b[d][s]));
+const copyDeliveries = picks => new Map([...picks].map(([d,who])=>[d,new Set(who)]));
+const samePeople = (a=new Set(),b=new Set()) => a.size===b.size && [...a].every(p=>b.has(p));
+const sameDeliveries = (a,b) => [...new Set([...a.keys(),...b.keys()])].every(d=>samePeople(a.get(d),b.get(d)));
 const validSlot = (grid,slot) => Array.isArray(slot) && slot.length===2 &&
   Number.isInteger(slot[0]) && Number.isInteger(slot[1]) &&
   slot[0]>=0 && slot[0]<grid.length && slot[1]>=M && slot[1]<=N;
@@ -926,11 +952,21 @@ function editGrid(grid, source, change){
   return next;
 }
 
+function editDelivery(deliveries, day, people, days, start){
+  if (!Number.isInteger(day) || day<0 || day>=days || dayDate(start,day).getDay()!==DELIVERY_DAY) return null;
+  if (!Array.isArray(people) || people.some(p=>!Number.isInteger(p) || p<0 || p>=EMPLOYEES.length)) return null;
+  const next = copyDeliveries(deliveries);
+  if (people.length) next.set(day,new Set(people));
+  else next.delete(day);
+  return next;
+}
+
 // Review the entire edited rota, including both sides of a swap and both neighbouring days.
 // Warnings never prevent a manual edit; generation still enforces all its original rules.
-function rotaWarnings(grid, counts, blk, start, locks){
+function rotaWarnings(grid, counts, blk, start, locks, deliveryInfo=null){
   const warnings = [], assignments = EMPLOYEES.map(()=>[]);
-  const add = (message,slots) => warnings.push({message,slots});
+  const deliveries = deliveryInfo?.assignments;
+  const add = (message,slots,deliveryDays=[]) => warnings.push({message,slots,deliveryDays});
   for (let d=0; d<grid.length; d++){
     const date = fmtDate(dayDate(start,d));
     const byPerson = new Map();
@@ -941,10 +977,14 @@ function rotaWarnings(grid, counts, blk, start, locks){
       if (!byPerson.has(p)) byPerson.set(p,[]);
       byPerson.get(p).push(slot);
       if (!e.allowed.includes(s)) add(`${label} is not an allowed shift for them.`,[slot]);
-      if (blk[p].get(d)?.has(s) || e.allowed.every(allowed=>blk[p].get(d)?.has(allowed)))
-        add(`${label} conflicts with time off, a non-working weekday or a delivery.`,[slot]);
-      if (s===N && d+1<grid.length && e.allowed.every(next=>blk[p].get(d+1)?.has(next)))
-        add(`${label} runs into their day off or delivery on ${fmtDate(dayDate(start,d+1))}.`,[slot]);
+      if (blk[p].get(d)?.has(s) || e.allowed.every(allowed=>blk[p].get(d)?.has(allowed))){
+        const deliveryDay = deliveries?.get(d)?.has(p);
+        add(deliveryDay ? `${label} conflicts with their delivery that day.` : `${label} conflicts with time off, a non-working weekday or a delivery.`,[slot],deliveryDay?[d]:[]);
+      }
+      if (s===N && d+1<grid.length && e.allowed.every(next=>blk[p].get(d+1)?.has(next))){
+        const nextDelivery = deliveries?.get(d+1)?.has(p);
+        add(`${label} runs into their day off or delivery on ${fmtDate(dayDate(start,d+1))}.`,[slot],nextDelivery?[d+1]:[]);
+      }
       if (d>0){
         const previous = grid[d-1].flatMap((person,shift)=>person===p && shift>s ? [[d-1,shift]] : []);
         if (previous.length) add(`${label} is too early after their shift the day before. Allow a day off or choose the same or a later shift.`,[...previous,slot]);
@@ -954,6 +994,14 @@ function rotaWarnings(grid, counts, blk, start, locks){
     }
     for (const [p,slots] of byPerson) if (slots.length>1)
       add(`${nice(EMPLOYEES[p].name)} has ${slots.length} shifts on ${date}. The rota rule is one shift per person per day.`,slots);
+    if (deliveries && dayDate(start,d).getDay()===DELIVERY_DAY){
+      const people = deliveries.get(d) || new Set();
+      if (!people.size) add(`No one is assigned to the delivery on ${date}. Choose at least one person.`,[],[d]);
+      for (const p of people){
+        if (EMPLOYEES[p].allowed.every(s=>deliveryInfo.availability[p].get(d)?.has(s)))
+          add(`${nice(EMPLOYEES[p].name)}'s delivery on ${date} conflicts with their whole day off or a non-working weekday.`,[],[d]);
+      }
+    }
   }
   assignments.forEach((slots,p)=>{
     if (slots.length!==counts[p])
@@ -964,25 +1012,36 @@ function rotaWarnings(grid, counts, blk, start, locks){
 
 const escapeHTML = text => String(text).replace(/[&<>"']/g, char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 const warningItems = warnings => warnings.map(w=>`<li>${escapeHTML(w.message)}</li>`).join("");
+const warningPreview = warnings => warnings.length
+  ? `<div class="rota-warnings"><h3>After this change: ${warnings.length} warning${warnings.length===1?"":"s"}</h3><p>You can still save this change.</p><ul class="warning-list">${warningItems(warnings)}</ul></div>`
+  : `<p class="preview-ok">All rota rules and shift targets will still be satisfied.</p>`;
+
+function currentRotaWarnings(grid=currentRota.grid, deliveries=currentRota.deliveries){
+  const {days,start,counts,locks} = currentRota;
+  return rotaWarnings(grid,counts,effectiveBlocks(days,start,deliveries),start,locks,{
+    assignments:deliveries, availability:effectiveBlocks(days,start,new Map())
+  });
+}
 
 function refreshRota(message=""){
   if (!currentRota) return;
-  const {grid,days,start,locks,baseline,counts,blk,history} = currentRota;
-  const warnings = rotaWarnings(grid,counts,blk,start,locks);
-  render(grid,days,start,locks,baseline,counts,warnings);
+  const {grid,days,start,locks,baseline,counts,history,deliveries,baselineDeliveries} = currentRota;
+  const warnings = currentRotaWarnings();
+  render(grid,days,start,locks,baseline,counts,warnings,deliveries,baselineDeliveries);
   $("editHelp").hidden = false;
   $("btnUndo").disabled = !history.length;
-  $("btnResetEdits").disabled = sameGrid(grid,baseline);
+  $("btnResetEdits").disabled = sameGrid(grid,baseline) && sameDeliveries(deliveries,baselineDeliveries);
   $("rotaWarnings").hidden = !warnings.length;
   $("warningTitle").textContent = `${warnings.length} warning${warnings.length===1?"":"s"} — review before sharing`;
   $("warningList").innerHTML = warningItems(warnings);
   $("editStatus").textContent = `${message}${message?" ":""}${warnings.length ? `${warnings.length} warning${warnings.length===1?"":"s"} to review below.` : "All rota rules and shift targets are satisfied."}`;
 }
 
-function commitRotaEdit(next, message){
-  if (!currentRota || !next || sameGrid(next,currentRota.grid)) return false;
-  currentRota.history.push(currentRota.grid);
+function commitRotaEdit(next, message, deliveries=currentRota?.deliveries){
+  if (!currentRota || !next || !deliveries || (sameGrid(next,currentRota.grid) && sameDeliveries(deliveries,currentRota.deliveries))) return false;
+  currentRota.history.push({grid:currentRota.grid,deliveries:currentRota.deliveries});
   currentRota.grid = next;
+  currentRota.deliveries = deliveries;
   refreshRota(message);
   return true;
 }
@@ -1034,11 +1093,37 @@ function updateEditPreview(){
     $("editPreview").innerHTML = `<p class="hint">Choose a different person or a shift to swap with.</p>`;
     return;
   }
-  const {counts,blk,start,locks} = currentRota;
-  const warnings = rotaWarnings(next,counts,blk,start,locks);
-  $("editPreview").innerHTML = warnings.length
-    ? `<div class="rota-warnings"><h3>After this change: ${warnings.length} warning${warnings.length===1?"":"s"}</h3><p>You can still save this change.</p><ul class="warning-list">${warningItems(warnings)}</ul></div>`
-    : `<p class="preview-ok">All rota rules and shift targets will still be satisfied.</p>`;
+  $("editPreview").innerHTML = warningPreview(currentRotaWarnings(next));
+}
+
+function focusDelivery(day){
+  if (day!==null) $("output").querySelector(`.delivery-button[data-d="${day}"]`)?.focus({preventScroll:true});
+}
+
+function openDeliveryEditor(day){
+  if (!currentRota || !Number.isInteger(day) || day<0 || day>=currentRota.days || dayDate(currentRota.start,day).getDay()!==DELIVERY_DAY) return;
+  editingDeliveryDay = day;
+  const chosen = currentRota.deliveries.get(day) || new Set();
+  $("deliveryEditorContext").textContent = `${DAYNAMES[DELIVERY_DAY]}, ${fmtDate(dayDate(currentRota.start,day))} — ${DELIVERY_HRS} hours per person`;
+  $("deliveryOptions").innerHTML = EMPLOYEES.map((e,p)=>`<label class="delivery-option"><input type="checkbox" value="${p}"${chosen.has(p)?" checked":""}>${escapeHTML(nice(e.name))}</label>`).join("");
+  updateDeliveryPreview();
+  $("deliveryEditor").showModal();
+  $("deliveryOptions").querySelector("input").focus();
+}
+
+function proposedDelivery(){
+  if (!currentRota || editingDeliveryDay===null) return null;
+  const people = [...$("deliveryOptions").querySelectorAll("input:checked")].map(input=>Number(input.value));
+  return editDelivery(currentRota.deliveries,editingDeliveryDay,people,currentRota.days,currentRota.start);
+}
+
+function updateDeliveryPreview(){
+  const next = proposedDelivery();
+  const changed = next && !sameDeliveries(next,currentRota.deliveries);
+  $("btnSaveDelivery").disabled = !changed;
+  $("deliveryPreview").innerHTML = changed
+    ? warningPreview(currentRotaWarnings(currentRota.grid,next))
+    : `<p class="hint">Select or deselect people to change this delivery.</p>`;
 }
 
 function clearDrag(){
@@ -1049,11 +1134,11 @@ function clearDrag(){
 function initRotaEditing(){
   $("btnUndo").addEventListener("click",()=>{
     if (!currentRota?.history.length) return;
-    currentRota.grid = currentRota.history.pop();
+    Object.assign(currentRota,currentRota.history.pop());
     refreshRota("Last change undone.");
   });
   $("btnResetEdits").addEventListener("click",()=>{
-    if (currentRota) commitRotaEdit(copyGrid(currentRota.baseline),"Original generated rota restored. You can undo this reset.");
+    if (currentRota) commitRotaEdit(copyGrid(currentRota.baseline),"Original generated rota restored. You can undo this reset.",copyDeliveries(currentRota.baselineDeliveries));
   });
   for (const id of ["editAction","editPerson","editSwap"]) $(id).addEventListener("change",updateEditPreview);
   $("btnCancelEdit").addEventListener("click",()=>$("shiftEditor").close());
@@ -1069,10 +1154,25 @@ function initRotaEditing(){
     commitRotaEdit(next,message);
     focusShift(editingSlot);
   });
+  $("deliveryOptions").addEventListener("change",updateDeliveryPreview);
+  $("btnCancelDelivery").addEventListener("click",()=>$("deliveryEditor").close());
+  $("deliveryEditor").addEventListener("close",()=>{
+    focusDelivery(editingDeliveryDay);
+    editingDeliveryDay = null;
+  });
+  $("deliveryEditForm").addEventListener("submit",ev=>{
+    ev.preventDefault();
+    const next = proposedDelivery();
+    $("deliveryEditor").close();
+    if (next) commitRotaEdit(currentRota.grid,"Delivery assignments updated.",next);
+    focusDelivery(editingDeliveryDay);
+  });
   const output = $("output");
   output.addEventListener("click",ev=>{
     const button = ev.target.closest(".shift-button");
     if (button) openShiftEditor([+button.dataset.d,+button.dataset.s]);
+    const deliveryButton = ev.target.closest(".delivery-button");
+    if (deliveryButton) openDeliveryEditor(+deliveryButton.dataset.d);
   });
   output.addEventListener("dragstart",ev=>{
     const button = ev.target.closest(".shift-button");
@@ -1124,8 +1224,9 @@ function shiftTimes(grid, d){
   };
 }
 
-function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,-1]), baseline=grid, counts=null, warnings=[]){
+function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,-1]), baseline=grid, counts=null, warnings=[], deliveries=delivery, baselineDeliveries=deliveries){
   const warningSlots = new Set(warnings.flatMap(w=>w.slots.map(([d,s])=>`${d},${s}`)));
+  const warningDeliveries = new Set(warnings.flatMap(w=>w.deliveryDays || []));
   const end = new Date(start); end.setDate(end.getDate()+days-1);
   let h = `<div class="rota-title">MOSTYN BROADWAY &nbsp;${fmtDate(start)} TO ${fmtDate(end)}</div>`;
   h += `<div class="rotawrap"><table class="rota"><thead><tr>
@@ -1158,11 +1259,16 @@ function render(grid, days, start, locks = Array.from({length:days}, ()=>[-1,-1,
            `<button type="button" class="shift-button" ${slot} draggable="true" aria-label="${escapeHTML(label)}" aria-haspopup="dialog" title="Click to edit, or drag onto another shift to swap">${EMPLOYEES[p].name}${badge}${edited}${warning}</button></td>` +
            `<td ${slot}>${tm.from}</td><td ${slot}>${tm.to}</td><td class="hrs" ${slot}>${tm.hrs.toFixed(2)}</td>`;
     }
-    const who = [...(delivery.get(d) || [])].sort((a,b)=>a-b);
-    if (who.length){
+    const who = [...(deliveries.get(d) || [])].sort((a,b)=>a-b);
+    if (dt.getDay()===DELIVERY_DAY){
       who.forEach(p => { hours[p] += DELIVERY_HRS; delivCount[p]++; });
       const bg = who.length === 1 ? ` style="background:${EMPLOYEES[who[0]].color}"` : "";
-      h += `<td class="name"${bg}>${who.map(p=>EMPLOYEES[p].name).join(" &amp; ")}</td><td class="hrs">${DELIVERY_HRS.toFixed(2)}</td>`;
+      const names = who.map(p=>EMPLOYEES[p].name).join(" &amp; ");
+      const edited = !samePeople(deliveries.get(d),baselineDeliveries.get(d)) ? `<span class="edited-badge">Edited</span>` : "";
+      const warning = warningDeliveries.has(d) ? `<span class="warning-badge">! Review</span>` : "";
+      const label = `Edit delivery on ${fmtDate(dt)}, ${who.length?who.map(p=>nice(EMPLOYEES[p].name)).join(" and "):"no one assigned"}${warning?", has warnings":""}`;
+      h += `<td class="name delivery-name"${bg}><button type="button" class="delivery-button" data-d="${d}" aria-haspopup="dialog" aria-label="${escapeHTML(label)}" title="Click to choose delivery people">` +
+        `${names || '<span class="delivery-placeholder">Choose names</span>'}${edited}${warning}</button></td><td class="hrs">${who.length?DELIVERY_HRS.toFixed(2):""}</td>`;
     } else {
       h += `<td class="nodeliv" colspan="2"></td>`;
     }
@@ -1205,7 +1311,7 @@ function run(){
       "Try changing a fixed shift, moving a shift or two between people, or unblocking a shift.";
     return;
   }
-  currentRota = {grid,baseline:copyGrid(grid),days,start,counts,blk,locks,history:[]};
+  currentRota = {grid,baseline:copyGrid(grid),days,start,counts,locks,history:[],deliveries:copyDeliveries(delivery),baselineDeliveries:copyDeliveries(delivery)};
   refreshRota();
 }
 

@@ -9,7 +9,7 @@ function loadApp(){
   const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/initUI\(\);\s*$/, '');
   const context = vm.createContext({});
   vm.runInContext(source, context);
-  return vm.runInContext('({EMPLOYEES, M, A, N, solve, generate, validate, validateFixed, effectiveBlocks, blocked, delivery, fixed, fixedGrid, dateKey, dayDate, shiftTimes, editGrid, rotaWarnings})', context);
+  return vm.runInContext('({EMPLOYEES, M, A, N, solve, generate, validate, validateFixed, effectiveBlocks, blocked, delivery, fixed, fixedGrid, dateKey, dayDate, shiftTimes, editGrid, rotaWarnings, editDelivery, copyDeliveries, sameDeliveries})', context);
 }
 
 function setup(days=14, start='2026-10-19'){
@@ -276,4 +276,71 @@ for (const days of [1,28]) test(`editing the final shift of a ${days}-day rota i
   const next=f.app.editGrid(grid,[days-1,2],{person:f.people.ZAHEER});
   assert.equal(next[days-1][2],f.people.ZAHEER);
   assert.ok(review(f,next).length>0);
+});
+
+test('delivery edits support multiple people without mutating settings or other Tuesdays',()=>{
+  const f=setup(), {app,people}=f;
+  const next=app.editDelivery(app.delivery,1,[people['RIDA FATIMA'],people['RIDA BILAL'],people['RIDA FATIMA']],f.days,f.date);
+  assert.deepEqual([...next.get(1)],[people['RIDA FATIMA'],people['RIDA BILAL']]);
+  assert.deepEqual([...app.delivery.get(1)],[people.HASSAN]);
+  assert.deepEqual([...next.get(8)],[people.HASSAN]);
+  assert.notEqual(next.get(8),app.delivery.get(8),'Snapshots must not share mutable sets');
+  const reordered=app.editDelivery(next,1,[people['RIDA BILAL'],people['RIDA FATIMA']],f.days,f.date);
+  assert.equal(app.sameDeliveries(next,reordered),true,'Checkbox order does not create a new edit');
+  const empty=app.editDelivery(next,1,[],f.days,f.date);
+  assert.equal(empty.has(1),false);
+  assert.equal(next.get(1).size,2);
+});
+
+test('delivery edits reject invalid dates and people',()=>{
+  const f=setup(), {app}=f;
+  for (const day of [-1,0,2,14,1.5,NaN])
+    assert.equal(app.editDelivery(app.delivery,day,[0],f.days,f.date),null);
+  for (const people of [[-1],[10],[0.5],[NaN],null])
+    assert.equal(app.editDelivery(app.delivery,1,people,f.days,f.date),null);
+});
+
+test('delivery edits support the first and final days of the supported range',()=>{
+  const f=setup(1,'2026-10-20');
+  assert.deepEqual([...f.app.editDelivery(f.app.delivery,0,[8],1,f.date).get(0)],[8]);
+  const start=new Date('2026-10-21T00:00:00');
+  assert.deepEqual([...f.app.editDelivery(new Map(),27,[8],28,start).get(27)],[8]);
+});
+
+function deliveryReview(f,grid,assignments){
+  return f.app.rotaWarnings(grid,f.counts,f.app.effectiveBlocks(f.days,f.date,assignments),f.date,f.locks,{
+    assignments,availability:f.app.effectiveBlocks(f.days,f.date,new Map())
+  });
+}
+
+test('changing delivery people removes the old blocks and adds current conflicts',()=>{
+  const f=setup(2), {app,people}=f;
+  const grid=[[people.ELAINE,people.WES,people.JERRY],[people.ELAINE,people.WES,people.JERRY]];
+  f.counts.fill(0);
+  for (const p of [people.ELAINE,people.WES,people.JERRY]) f.counts[p]=2;
+  assert.equal(deliveryReview(f,grid,app.delivery).length,0);
+  const next=app.editDelivery(app.delivery,1,[people.JERRY],f.days,f.date);
+  const blocks=app.effectiveBlocks(f.days,f.date,next);
+  assert.equal(blocks[people.HASSAN].has(1),false,'The former delivery person is available again');
+  assert.equal(blocks[people.JERRY].get(1).has(app.N),true);
+  const warnings=deliveryReview(f,grid,next);
+  assert.equal(warnings.length,2,'Regular shift and previous night are the two conflicts');
+  assert.ok(warnings.every(w=>w.deliveryDays.includes(1)));
+  assert.ok(warnings.some(w=>w.slots.some(([d,s])=>d===0 && s===app.N)));
+  assert.ok(warnings.some(w=>w.slots.some(([d,s])=>d===1 && s===app.N)));
+  assert.equal(deliveryReview(f,grid,app.delivery).length,0,'Restoring the original delivery clears the warnings');
+});
+
+test('delivery edits warn about a whole day off and an unassigned Tuesday',()=>{
+  const f=setup(), {app,people}=f, grid=solve(f);
+  app.blocked[people.ZAHEER].set(1,new Set([app.M,app.A,app.N]));
+  const next=app.editDelivery(app.delivery,1,[people.ZAHEER],f.days,f.date);
+  const unavailable=deliveryReview(f,grid,next).find(w=>w.message.includes("Zaheer's delivery"));
+  assert.match(unavailable.message,/whole day off/);
+  assert.deepEqual([...unavailable.deliveryDays],[1]);
+  const empty=app.editDelivery(next,1,[],f.days,f.date);
+  const missing=deliveryReview(f,grid,empty).find(w=>w.message.includes('No one is assigned'));
+  assert.ok(missing);
+  assert.deepEqual([...missing.deliveryDays],[1]);
+  assert.ok(!deliveryReview(f,grid,empty).some(w=>w.message.includes('target in step 2')));
 });
